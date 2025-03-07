@@ -21,7 +21,7 @@ func TestRequest_IDString(t *testing.T) {
 
 	t.Run("Float64 ID", func(t *testing.T) {
 		req := &Request{ID: float64(123.456)}
-		assert.Equal(t, "123.456000", req.IDString())
+		assert.Equal(t, "123.456", req.IDString())
 	})
 
 	t.Run("Nil ID", func(t *testing.T) {
