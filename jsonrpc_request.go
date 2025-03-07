@@ -26,6 +26,8 @@ func (r *Request) IDString() string {
 		return id
 	case int64:
 		return fmt.Sprintf("%d", id)
+	case float64:
+		return fmt.Sprintf("%f", id)
 	default:
 		return ""
 	}

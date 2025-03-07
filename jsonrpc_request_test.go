@@ -8,6 +8,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRequest_IDString(t *testing.T) {
+	t.Run("String ID", func(t *testing.T) {
+		req := &Request{ID: "abc"}
+		assert.Equal(t, "abc", req.IDString())
+	})
+
+	t.Run("Int64 ID", func(t *testing.T) {
+		req := &Request{ID: int64(123)}
+		assert.Equal(t, "123", req.IDString())
+	})
+
+	t.Run("Float64 ID", func(t *testing.T) {
+		req := &Request{ID: float64(123.456)}
+		assert.Equal(t, "123.456000", req.IDString())
+	})
+
+	t.Run("Nil ID", func(t *testing.T) {
+		req := &Request{ID: nil}
+		assert.Equal(t, "", req.IDString())
+	})
+
+	t.Run("Unknown type ID", func(t *testing.T) {
+		req := &Request{ID: []int{1, 2, 3}}
+		assert.Equal(t, "", req.IDString())
+	})
+}
+
 func TestRequest_IsEmpty(t *testing.T) {
 	t.Run("Nil receiver => true", func(t *testing.T) {
 		var req *Request
