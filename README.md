@@ -3,7 +3,9 @@
 [godocs]: http://godoc.org/github.com/jakobilobi/go-jsonrpc
 [license]: /LICENSE
 
-A JSON-RPC 2.0 implementation in Go. Utilizes the [bytedance/sonic](https://github.com/bytedance/sonic) library for JSON serialization.
+A JSON-RPC 2.0 implementation in Go. It attempts to conform fully to the [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification).
+
+Utilizes the [bytedance/sonic](https://github.com/bytedance/sonic) library for JSON serialization.
 
 ## Install
 

@@ -9,13 +9,13 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// Request is a struct for JSON-RPC requests. It conforms to the JSON-RPC 2.0 specification as
-// closely as possible.
-// See: https://www.jsonrpc.org/specification
+// Request is a struct for a JSON-RPC request. It conforms to the JSON-RPC 2.0 specification, with
+// minor exceptions. E.g. the ID field is allowed to be fractional in this implementation.
+// Note: to ensure proper conformance, use the provided constructors and methods.
 type Request struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      any    `json:"id,omitempty"`
-	Method  string `json:"method,omitempty"`
+	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
 }
 

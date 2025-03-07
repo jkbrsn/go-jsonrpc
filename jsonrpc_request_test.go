@@ -143,28 +143,19 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 		assert.Equal(t, expected.ID, result.ID)
 	})
 
-	t.Run("No ID => random assigned", func(t *testing.T) {
-		data := []byte(`{"jsonrpc":"2.0","method":"eth_gasPrice"}`)
-		var req Request
-		err := req.UnmarshalJSON(data)
-		require.NoError(t, err)
-		assert.NotNil(t, req.ID)
-		// We can't predict the random ID, but ensure it's not empty
-		assert.NotEqual(t, "", req.ID)
-		assert.Equal(t, "eth_gasPrice", req.Method)
-	})
-
-	t.Run("Empty string ID => replaced with random", func(t *testing.T) {
+	t.Run("Empty string ID => replaced with nil", func(t *testing.T) {
 		data := []byte(`{"jsonrpc":"2.0","id":"","method":"eth_chainId"}`)
 		var req Request
 		err := req.UnmarshalJSON(data)
 		require.NoError(t, err)
-		assert.NotNil(t, req.ID)
-		// If empty string, is still replaced with random int ID
+		assert.Nil(t, req.ID)
+		// If empty string, ID should be nil
 		_, ok := req.ID.(string)
 		assert.False(t, ok)
 		_, ok = req.ID.(int64)
-		assert.True(t, ok)
+		assert.False(t, ok)
+		_, ok = req.ID.(float64)
+		assert.False(t, ok)
 		assert.Equal(t, "eth_chainId", req.Method)
 	})
 
