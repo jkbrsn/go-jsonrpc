@@ -30,6 +30,56 @@ func TestRequest_IsEmpty(t *testing.T) {
 	})
 }
 
+func TestRequest_MarshalJSON(t *testing.T) {
+	t.Run("Valid request with int ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "testMethod", Params: []any{"0x123"}, ID: int64(99)}
+		expected := `{"jsonrpc":"2.0","id":99,"method":"testMethod","params":["0x123"]}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+
+	t.Run("Valid request with string ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: []any{}, ID: "abc"}
+		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":[]}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+
+	t.Run("Valid request with nil Params", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_chainId", ID: "abc"}
+		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId"}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+
+	t.Run("Valid request with empty Params", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_chainId", Params: []any{}, ID: "abc"}
+		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId","params":[]}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+
+	t.Run("Valid request with object Params", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: map[string]any{"address": "0x123"}, ID: "abc"}
+		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":{"address":"0x123"}}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+
+	t.Run("Empty request", func(t *testing.T) {
+		req := &Request{}
+		expected := `{}`
+		data, err := req.MarshalJSON()
+		assert.NoError(t, err)
+		assert.JSONEq(t, expected, string(data))
+	})
+}
+
 func TestRequest_UnmarshalJSON(t *testing.T) {
 	t.Run("Valid JSON with int ID", func(t *testing.T) {
 		data := []byte(`{"jsonrpc":"2.0","method":"test","params":["0x123"],"id":99}`)

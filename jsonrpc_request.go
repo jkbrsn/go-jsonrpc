@@ -9,15 +9,16 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// TODO: add a method to validate the request
 // TODO: add a method to marshal the request into a byte slice
 
-// Request is a struct for JSON RPC requests.
+// Request is a struct for JSON RPC requests. It conforms to the JSON RPC 2.0 specification as
+// closely as possible.
+// See: https://www.jsonrpc.org/specification
 type Request struct {
 	JSONRPC string `json:"jsonrpc,omitempty"`
 	ID      any    `json:"id,omitempty"`
-	Method  string `json:"method"`
-	Params  any    `json:"params"`
+	Method  string `json:"method,omitempty"`
+	Params  any    `json:"params,omitempty"`
 }
 
 // IDString returns the ID as a string.
@@ -43,6 +44,13 @@ func (r *Request) IsEmpty() bool {
 	}
 
 	return false
+}
+
+// MarshalJSON marshals a JSON RPC request using sonic.
+// TODO: currently allows for any field to be empty, which may not produce valid JSON RPC
+func (r *Request) MarshalJSON() ([]byte, error) {
+	type alias Request // Avoid infinite recursion by using an alias
+	return sonic.Marshal((*alias)(r))
 }
 
 // String returns a string representation of the JSON RPC request.
