@@ -154,6 +154,16 @@ func (req *Request) Validate() error {
 	if req.Method == "" {
 		return errors.New("method field is required")
 	}
+	switch req.ID.(type) {
+	case nil, string, int64, float64:
+	default:
+		return errors.New("id field must be a string or a number")
+	}
+	switch req.Params.(type) {
+	case nil, []any, map[string]any:
+	default:
+		return errors.New("params field must be either an array, an object, or nil")
+	}
 	return nil
 }
 

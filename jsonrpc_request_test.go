@@ -117,6 +117,14 @@ func TestRequest_MarshalJSON(t *testing.T) {
 				name: "Empty JSONRPC",
 				req:  &Request{JSONRPC: ""},
 			},
+			{
+				name: "Wrong JSONRPC version",
+				req:  &Request{JSONRPC: "1.0", Method: "testMethod"},
+			},
+			{
+				name: "Invalid ID type",
+				req:  &Request{JSONRPC: "2.0", Method: "testMethod", ID: []int{1, 2, 3}},
+			},
 		}
 
 		for _, tc := range cases {
