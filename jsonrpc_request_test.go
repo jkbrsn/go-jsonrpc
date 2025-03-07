@@ -210,6 +210,20 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 		assert.Equal(t, expected.ID, result.ID)
 	})
 
+	t.Run("Valid JSON with extra field", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","method":"test","id":32123,"something":"extra"}`)
+		expected := Request{JSONRPC: "2.0", Method: "test", ID: int64(32123)}
+
+		var result Request
+		err := result.UnmarshalJSON(data)
+		assert.NoError(t, err, "Unexpected error")
+		assert.Equal(t, expected.JSONRPC, result.JSONRPC)
+		assert.Equal(t, expected.Method, result.Method)
+		assert.Equal(t, expected.Params, result.Params)
+		assert.Equal(t, expected.ID, result.ID)
+		assert.IsType(t, int64(0), result.ID)
+	})
+
 	t.Run("Empty string ID => replaced with nil", func(t *testing.T) {
 		data := []byte(`{"jsonrpc":"2.0","id":"","method":"eth_chainId"}`)
 		var req Request
