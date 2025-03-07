@@ -9,8 +9,6 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// TODO: add a method to marshal the request into a byte slice
-
 // Request is a struct for JSON RPC requests. It conforms to the JSON RPC 2.0 specification as
 // closely as possible.
 // See: https://www.jsonrpc.org/specification

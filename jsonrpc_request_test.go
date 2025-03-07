@@ -232,8 +232,9 @@ func TestRequest_Concurrency(t *testing.T) {
 			_ = req.Params
 			assert.False(t, req.IsEmpty())
 
-			// TODO: marshal and compare to original data
-			//assert.JSONEq(t, string(data), string(marshaledData))
+			marshaledData, err := req.MarshalJSON()
+			require.NoError(t, err)
+			assert.JSONEq(t, string(data), string(marshaledData))
 		}
 	}
 
