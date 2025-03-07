@@ -80,12 +80,12 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	}
 
 	if aux.JSONRPC != "2.0" {
-		return fmt.Errorf("invalid jsonrpc version: expected \"2.0\", got %q", aux.JSONRPC)
+		return fmt.Errorf("jsonrpc field is required to be exactly \"2.0\"")
 	}
 	r.JSONRPC = aux.JSONRPC
 
 	if aux.Method == "" {
-		return errors.New("missing required field: method")
+		return errors.New("method field is required")
 	}
 	r.Method = aux.Method
 
