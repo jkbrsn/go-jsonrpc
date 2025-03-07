@@ -13,7 +13,7 @@ import (
 // closely as possible.
 // See: https://www.jsonrpc.org/specification
 type Request struct {
-	JSONRPC string `json:"jsonrpc,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
 	ID      any    `json:"id,omitempty"`
 	Method  string `json:"method,omitempty"`
 	Params  any    `json:"params,omitempty"`
@@ -143,8 +143,8 @@ func (req *Request) Validate() error {
 	if req == nil {
 		return errors.New("request is nil")
 	}
-	if req.JSONRPC == "" {
-		return errors.New("jsonrpc field is required")
+	if req.JSONRPC != "2.0" {
+		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
 	}
 	if req.Method == "" {
 		return errors.New("method field is required")
