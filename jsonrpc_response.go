@@ -11,7 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// Response is a struct for JSON RPC responses.
+// Response is a struct for JSON-RPC responses.
 type Response struct {
 	id      any
 	idBytes []byte
@@ -25,7 +25,7 @@ type Response struct {
 	muResult sync.RWMutex
 }
 
-// jsonRPCResponse is an internal representation of a JSON RPC response.
+// jsonRPCResponse is an internal representation of a JSON-RPC response.
 // This is decoupled from the public struct to allow for custom handling of the response data,
 // separately from how it is marshaled and unmarshaled.
 type jsonRPCResponse struct {
@@ -35,7 +35,7 @@ type jsonRPCResponse struct {
 	Result  json.RawMessage `json:"result,omitempty"`
 }
 
-// Equals compares the contents of two JSON RPC responses.
+// Equals compares the contents of two JSON-RPC responses.
 func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
@@ -56,7 +56,7 @@ func (r *Response) Equals(other *Response) bool {
 	return true
 }
 
-// ID returns the ID of the JSON RPC response.
+// ID returns the ID of the JSON-RPC response.
 func (r *Response) ID() any {
 	r.muID.RLock()
 
@@ -95,7 +95,7 @@ func (r *Response) IDString() string {
 	}
 }
 
-// IsEmpty returns whether the JSON RPC response can be considered empty.
+// IsEmpty returns whether the JSON-RPC response can be considered empty.
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
@@ -117,7 +117,7 @@ func (r *Response) IsEmpty() bool {
 	return false
 }
 
-// IsNull determines if the JSON RPC response is null.
+// IsNull determines if the JSON-RPC response is null.
 func (r *Response) IsNull() bool {
 	if r == nil {
 		return true
@@ -136,7 +136,7 @@ func (r *Response) IsNull() bool {
 	return false
 }
 
-// MarshalJSON marshals a JSON RPC response into a byte slice.
+// MarshalJSON marshals a JSON-RPC response into a byte slice.
 func (r *Response) MarshalJSON() ([]byte, error) {
 	// Retrieve the id value.
 	r.muID.RLock()
@@ -168,7 +168,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	return sonic.Marshal(out)
 }
 
-// ParseError parses an error from a raw JSON RPC response.
+// ParseError parses an error from a raw JSON-RPC response.
 func (r *Response) ParseError(raw string) error {
 	r.muErr.Lock()
 	defer r.muErr.Unlock()
@@ -187,7 +187,7 @@ func (r *Response) ParseError(raw string) error {
 		return nil
 	}
 
-	// 1. Unmarshal the error as a standard JSON RPC error
+	// 1. Unmarshal the error as a standard JSON-RPC error
 	var rpcErr Error
 	if err := sonic.UnmarshalString(raw, &rpcErr); err == nil {
 		// If at least one of Code or Message is set, consider a valid error
@@ -236,7 +236,7 @@ func (r *Response) ParseError(raw string) error {
 	return nil
 }
 
-// ParseFromStream parses a JSON RPC response from a stream.
+// ParseFromStream parses a JSON-RPC response from a stream.
 func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	// 16KB chunks by default
 	chunkSize := 16 * 1024
@@ -248,9 +248,9 @@ func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	return r.ParseFromBytes(data)
 }
 
-// ParseFromBytes parses a JSON RPC response from a byte slice.
+// ParseFromBytes parses a JSON-RPC response from a byte slice.
 func (r *Response) ParseFromBytes(data []byte) error {
-	// Define an auxiliary struct that maps directly to the JSON RPC response structure
+	// Define an auxiliary struct that maps directly to the JSON-RPC response structure
 	type jsonRPCResponseAux struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id"`
@@ -298,7 +298,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 	return nil
 }
 
-// SetID sets the ID of the JSON RPC response. Both ID fields are updated.
+// SetID sets the ID of the JSON-RPC response. Both ID fields are updated.
 func (r *Response) SetID(id any) error {
 	r.muID.Lock()
 	defer r.muID.Unlock()
@@ -314,12 +314,12 @@ func (r *Response) SetID(id any) error {
 	return nil
 }
 
-// String returns a string representation of the JSON RPC response.
+// String returns a string representation of the JSON-RPC response.
 func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.id, r.Error, len(r.Result))
 }
 
-// ResponseFromStream creates a JSON RPC response from a stream.
+// ResponseFromStream creates a JSON-RPC response from a stream.
 func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	resp := &Response{}
 

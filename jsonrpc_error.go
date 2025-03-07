@@ -1,6 +1,6 @@
 package jsonrpc
 
-// Error represents a standard JSON RPC error.
+// Error represents a standard JSON-RPC error.
 type Error struct {
 	Code    int    `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`

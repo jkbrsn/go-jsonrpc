@@ -9,8 +9,8 @@ import (
 
 const ServerSideException = -32603
 
-// randomJSONRPCID returns a value appropriate for a JSON RPC ID field. This is an int with a
-// 32-bit range, as per the JSON RPC specification.
+// randomJSONRPCID returns a value appropriate for a JSON-RPC ID field. This is an int with a
+// 32-bit range, as per the JSON-RPC specification.
 func randomJSONRPCID() int64 {
 	return int64(rand.Int31())
 }

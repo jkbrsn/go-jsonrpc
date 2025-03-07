@@ -426,7 +426,7 @@ func TestResponseFromStream(t *testing.T) {
 	})
 
 	// Content based test cases
-	// TODO: more cases, and make sure the parsing actually denies malformed JSON RPC responses
+	// TODO: more cases, and make sure the parsing actually denies malformed JSON-RPC responses
 	cases := []struct {
 		name       string
 		bytes      []byte

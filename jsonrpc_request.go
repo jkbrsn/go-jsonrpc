@@ -9,7 +9,7 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// Request is a struct for JSON RPC requests. It conforms to the JSON RPC 2.0 specification as
+// Request is a struct for JSON-RPC requests. It conforms to the JSON-RPC 2.0 specification as
 // closely as possible.
 // See: https://www.jsonrpc.org/specification
 type Request struct {
@@ -44,25 +44,27 @@ func (r *Request) IsEmpty() bool {
 	return false
 }
 
-// MarshalJSON marshals a JSON RPC request using sonic.
-// TODO: currently allows for any field to be empty, which may not produce valid JSON RPC
+// MarshalJSON marshals a JSON-RPC request.
 func (r *Request) MarshalJSON() ([]byte, error) {
+	err := r.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	type alias Request // Avoid infinite recursion by using an alias
 	return sonic.Marshal((*alias)(r))
 }
 
-// String returns a string representation of the JSON RPC request.
+// String returns a string representation of the JSON-RPC request.
 // Note: implements the fmt.Stringer interface.
 func (r *Request) String() string {
 	return fmt.Sprintf("ID: %v, Method: %s", r.ID, r.Method)
 }
 
-// UnmarshalJSON unmarshals a JSON RPC request using sonic. It includes two custom actions:
-// - Sets the JSON RPC version to 2.0.
-// - Unmarshals the ID separately, to handle both string and float64 types.
+// UnmarshalJSON unmarshals a JSON-RPC request. The function takes two custom actions; sets the
+// JSON-RPC version to 2.0 and unmarshals the ID separately, to handle both string and float64 IDs.
 func (r *Request) UnmarshalJSON(data []byte) error {
-	// Define an auxiliary struct that maps directly to the JSON RPC request structure
-	// TODO: is this auxiliary struct necessary?
+	// Define an auxiliary type that maps to the JSON-RPC request structure, but with raw fields
 	type requestAux struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id"`
@@ -136,7 +138,21 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RequestFromBytes creates a JSON RPC request from a byte slice.
+// Validate checks if the JSON-RPC request has all required fields populated.
+func (req *Request) Validate() error {
+	if req == nil {
+		return errors.New("request is nil")
+	}
+	if req.JSONRPC == "" {
+		return errors.New("jsonrpc field is required")
+	}
+	if req.Method == "" {
+		return errors.New("method field is required")
+	}
+	return nil
+}
+
+// RequestFromBytes creates a JSON-RPC request from a byte slice.
 func RequestFromBytes(data []byte) (*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, fmt.Errorf("empty data")

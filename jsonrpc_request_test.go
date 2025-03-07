@@ -31,52 +31,73 @@ func TestRequest_IsEmpty(t *testing.T) {
 }
 
 func TestRequest_MarshalJSON(t *testing.T) {
-	t.Run("Valid request with int ID", func(t *testing.T) {
-		req := &Request{JSONRPC: "2.0", Method: "testMethod", Params: []any{"0x123"}, ID: int64(99)}
-		expected := `{"jsonrpc":"2.0","id":99,"method":"testMethod","params":["0x123"]}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
+	t.Run("Valid request", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			req      *Request
+			expected string
+		}{
+			{
+				name:     "With int ID",
+				req:      &Request{JSONRPC: "2.0", Method: "testMethod", Params: []any{"0x123"}, ID: int64(99)},
+				expected: `{"jsonrpc":"2.0","id":99,"method":"testMethod","params":["0x123"]}`,
+			},
+			{
+				name:     "With string ID",
+				req:      &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: []any{}, ID: "abc"},
+				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":[]}`,
+			},
+			{
+				name:     "With nil Params",
+				req:      &Request{JSONRPC: "2.0", Method: "eth_chainId", ID: "abc"},
+				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId"}`,
+			},
+			{
+				name:     "With empty Params",
+				req:      &Request{JSONRPC: "2.0", Method: "eth_chainId", Params: []any{}, ID: "abc"},
+				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId","params":[]}`,
+			},
+			{
+				name:     "With object Params",
+				req:      &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: map[string]any{"address": "0x123"}, ID: "abc"},
+				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":{"address":"0x123"}}`,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				data, err := tc.req.MarshalJSON()
+				require.NoError(t, err)
+				assert.JSONEq(t, tc.expected, string(data))
+			})
+		}
 	})
 
-	t.Run("Valid request with string ID", func(t *testing.T) {
-		req := &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: []any{}, ID: "abc"}
-		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":[]}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
-	})
+	t.Run("Invalid request", func(t *testing.T) {
+		cases := []struct {
+			name string
+			req  *Request
+		}{
+			{
+				name: "Nil receiver",
+				req:  nil,
+			},
+			{
+				name: "Empty method",
+				req:  &Request{Method: ""},
+			},
+			{
+				name: "Empty JSONRPC",
+				req:  &Request{JSONRPC: ""},
+			},
+		}
 
-	t.Run("Valid request with nil Params", func(t *testing.T) {
-		req := &Request{JSONRPC: "2.0", Method: "eth_chainId", ID: "abc"}
-		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId"}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
-	})
-
-	t.Run("Valid request with empty Params", func(t *testing.T) {
-		req := &Request{JSONRPC: "2.0", Method: "eth_chainId", Params: []any{}, ID: "abc"}
-		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId","params":[]}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
-	})
-
-	t.Run("Valid request with object Params", func(t *testing.T) {
-		req := &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: map[string]any{"address": "0x123"}, ID: "abc"}
-		expected := `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":{"address":"0x123"}}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
-	})
-
-	t.Run("Empty request", func(t *testing.T) {
-		req := &Request{}
-		expected := `{}`
-		data, err := req.MarshalJSON()
-		assert.NoError(t, err)
-		assert.JSONEq(t, expected, string(data))
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := tc.req.MarshalJSON()
+				assert.Error(t, err, "should fail to marshal invalid request")
+			})
+		}
 	})
 }
 
