@@ -136,6 +136,38 @@ func TestRequest_MarshalJSON(t *testing.T) {
 	})
 }
 
+func TestRequest_String(t *testing.T) {
+	t.Run("With int ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "testMethod", Params: []any{"0x123"}, ID: int64(99)}
+		expected := "ID: 99, Method: testMethod"
+		assert.Equal(t, expected, req.String())
+	})
+
+	t.Run("With string ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: []any{}, ID: "abc"}
+		expected := "ID: abc, Method: eth_getBalance"
+		assert.Equal(t, expected, req.String())
+	})
+
+	t.Run("With nil ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "eth_chainId", ID: nil}
+		expected := "ID: <nil>, Method: eth_chainId"
+		assert.Equal(t, expected, req.String())
+	})
+
+	t.Run("With float ID", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "testMethod", ID: float64(123.456)}
+		expected := "ID: 123.456, Method: testMethod"
+		assert.Equal(t, expected, req.String())
+	})
+
+	t.Run("With empty Method", func(t *testing.T) {
+		req := &Request{JSONRPC: "2.0", Method: "", ID: "abc"}
+		expected := "ID: abc, Method: "
+		assert.Equal(t, expected, req.String())
+	})
+}
+
 func TestRequest_UnmarshalJSON(t *testing.T) {
 	t.Run("Valid JSON with int ID", func(t *testing.T) {
 		data := []byte(`{"jsonrpc":"2.0","method":"test","params":["0x123"],"id":99}`)
