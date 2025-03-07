@@ -113,6 +113,20 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 		assert.Equal(t, expected.Method, result.Method)
 		assert.Equal(t, expected.Params, result.Params)
 		assert.Equal(t, expected.ID, result.ID)
+		assert.IsType(t, int64(0), result.ID)
+	})
+
+	t.Run("Valid JSON with float ID", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","method":"test","id":33.3}`)
+		expected := Request{JSONRPC: "2.0", Method: "test", ID: float64(33.3)}
+
+		var result Request
+		err := result.UnmarshalJSON(data)
+		assert.NoError(t, err, "Unexpected error")
+		assert.Equal(t, expected.JSONRPC, result.JSONRPC)
+		assert.Equal(t, expected.Method, result.Method)
+		assert.Equal(t, expected.ID, result.ID)
+		assert.IsType(t, float64(0), result.ID)
 	})
 
 	t.Run("Valid JSON with string ID", func(t *testing.T) {
@@ -125,6 +139,7 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 		assert.Equal(t, expected.JSONRPC, result.JSONRPC)
 		assert.Equal(t, expected.Method, result.Method)
 		assert.Empty(t, result.Params)
+		assert.IsType(t, "", result.ID)
 		assert.Equal(t, expected.ID, result.ID)
 	})
 

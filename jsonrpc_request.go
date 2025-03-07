@@ -99,7 +99,12 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		} else {
 			switch v := id.(type) {
 			case float64:
-				r.ID = int64(v)
+				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+				if v != float64(int64(v)) {
+					r.ID = v
+				} else {
+					r.ID = int64(v)
+				}
 			case string:
 				if v == "" {
 					r.ID = nil
@@ -110,11 +115,8 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 				return errors.New("id field must be a string or a number")
 			}
 		}
-	}
-	if r.ID == nil {
-		// Set an ID to treat this as a call even though it might be a notification,
-		// as the ID field is required for some downstream services.
-		r.ID = randomJSONRPCID()
+	} else {
+		r.ID = nil
 	}
 
 	// Unmarshal the params field
