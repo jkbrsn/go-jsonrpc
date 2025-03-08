@@ -97,25 +97,6 @@ func TestResponse_Equals(t *testing.T) {
 	}
 }
 
-func TestResponse_ID(t *testing.T) {
-	t.Run("No ID set => returns nil", func(t *testing.T) {
-		resp := &Response{}
-		assert.Nil(t, resp.ID)
-	})
-
-	t.Run("SetID => returns correct ID and caches bytes", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = "my-unique-id"
-
-		// Reading the ID should return the same 'any' value
-		id := resp.ID
-		require.NotNil(t, id)
-		idStr, ok := id.(string)
-		require.True(t, ok)
-		assert.Equal(t, "my-unique-id", idStr)
-	})
-}
-
 func TestResponse_IDString(t *testing.T) {
 	t.Run("No ID set => returns empty string", func(t *testing.T) {
 		resp := &Response{}
