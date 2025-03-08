@@ -221,39 +221,6 @@ func (r *Response) ParseFromBytes(data []byte) error {
 	r.rawID = aux.ID
 	r.muID.Unlock()
 
-	// TODO: move to unmarshal function
-	// Unmarshal and validate the id field
-	/* if len(aux.ID) > 0 {
-		var id any
-		if err := sonic.Unmarshal(aux.ID, &id); err != nil {
-			return fmt.Errorf("invalid id field: %w", err)
-		}
-		// If the value is "null", id will be nil
-		if id == nil {
-			r.ID = nil
-		} else {
-			switch v := id.(type) {
-			case float64:
-				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
-				if v != float64(int64(v)) {
-					r.ID = v
-				} else {
-					r.ID = int64(v)
-				}
-			case string:
-				if v == "" {
-					r.ID = nil
-				} else {
-					r.ID = v
-				}
-			default:
-				return errors.New("id field must be a string or a number")
-			}
-		}
-	} else {
-		r.ID = nil
-	} */
-
 	// Assign result or error accordingly
 	if aux.Result != nil {
 		r.muResult.Lock()
@@ -400,7 +367,7 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 // TODO: finish implementation
 func (r *Response) Validate() error {
 	if r == nil {
-		return errors.New("reponse is nil")
+		return errors.New("response is nil")
 	}
 
 	/* if r.JSONRPC != "2.0" {
