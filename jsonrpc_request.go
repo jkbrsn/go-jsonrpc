@@ -144,23 +144,23 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 }
 
 // Validate checks if the JSON-RPC request conforms to the JSON-RPC specification.
-func (req *Request) Validate() error {
-	if req == nil {
+func (r *Request) Validate() error {
+	if r == nil {
 		return errors.New("request is nil")
 	}
-	if req.JSONRPC != "2.0" {
+	if r.JSONRPC != "2.0" {
 		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
 	}
-	if req.Method == "" {
+	if r.Method == "" {
 		return errors.New("method field is required")
 	}
 
-	switch req.ID.(type) {
+	switch r.ID.(type) {
 	case nil, string, int64, float64:
 	default:
 		return errors.New("id field must be a string or a number")
 	}
-	switch req.Params.(type) {
+	switch r.Params.(type) {
 	case nil, []any, map[string]any:
 	default:
 		return errors.New("params field must be either an array, an object, or nil")
