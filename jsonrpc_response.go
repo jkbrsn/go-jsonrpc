@@ -116,6 +116,15 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
+	// Retrieve the ID value
+	var id any
+	if r.ID != nil {
+		id = r.ID
+	} else {
+		// A JSON-RPC response must have an ID, even if it is null
+		id = "null"
+	}
+
 	// Retrieve the error value.
 	r.muErr.RLock()
 	errVal := r.Error
@@ -133,7 +142,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	// Build the output struct. Fields with zero values are omitted.
 	out := jsonRPCResponse{
 		JSONRPC: "2.0",
-		ID:      r.ID,
+		ID:      id,
 		Error:   errVal,
 		Result:  result,
 	}
