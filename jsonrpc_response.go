@@ -333,3 +333,30 @@ func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error)
 
 	return nil, fmt.Errorf("empty body")
 }
+
+// Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
+// TODO: finish implementation
+func (r *Response) Validate() error {
+	if r == nil {
+		return errors.New("reponse is nil")
+	}
+
+	/* if r.JSONRPC != "2.0" {
+		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
+	} */
+
+	switch r.id.(type) {
+	case nil, string, int64, float64:
+	default:
+		return errors.New("id field must be a string or a number")
+	}
+
+	if r.Error != nil && r.Result != nil {
+		return errors.New("response must not contain both result and error")
+	}
+	if r.Error == nil && r.Result == nil {
+		return errors.New("response must contain either result or error")
+	}
+
+	return nil
+}
