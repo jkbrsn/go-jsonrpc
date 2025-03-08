@@ -13,9 +13,7 @@ import (
 
 // Response is a struct for JSON-RPC responses.
 type Response struct {
-	id      any
-	idBytes []byte
-	muID    sync.RWMutex
+	ID any
 
 	Error    *Error
 	errBytes []byte
@@ -56,34 +54,9 @@ func (r *Response) Equals(other *Response) bool {
 	return true
 }
 
-// ID returns the ID of the JSON-RPC response.
-func (r *Response) ID() any {
-	r.muID.RLock()
-
-	if r.id != nil {
-		r.muID.RUnlock()
-		return r.id
-	}
-	r.muID.RUnlock()
-
-	r.muID.Lock()
-	defer r.muID.Unlock()
-
-	if len(r.idBytes) == 0 {
-		return nil
-	}
-
-	err := sonic.Unmarshal(r.idBytes, &r.id)
-	if err != nil {
-		return nil
-	}
-
-	return r.id
-}
-
 // IDString returns the ID as a string.
 func (r *Response) IDString() string {
-	switch id := r.ID().(type) {
+	switch id := r.ID.(type) {
 	case string:
 		return id
 	case int64:
@@ -129,7 +102,7 @@ func (r *Response) IsNull() bool {
 	r.muErr.RLock()
 	defer r.muErr.RUnlock()
 
-	if len(r.Result) == 0 && r.Error == nil && r.ID() == nil {
+	if len(r.Result) == 0 && r.Error == nil && r.ID == nil {
 		return true
 	}
 
@@ -138,11 +111,6 @@ func (r *Response) IsNull() bool {
 
 // MarshalJSON marshals a JSON-RPC response into a byte slice.
 func (r *Response) MarshalJSON() ([]byte, error) {
-	// Retrieve the id value.
-	r.muID.RLock()
-	id := r.id
-	r.muID.RUnlock()
-
 	// Retrieve the error value.
 	r.muErr.RLock()
 	errVal := r.Error
@@ -160,7 +128,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	// Build the output struct. Fields with zero values are omitted.
 	out := jsonRPCResponse{
 		JSONRPC: "2.0",
-		ID:      id,
+		ID:      r.ID,
 		Error:   errVal,
 		Result:  result,
 	}
@@ -279,10 +247,37 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		return errors.New("response must not contain both result and error")
 	}
 
-	// Process the id field
-	r.muID.Lock()
-	r.idBytes = aux.ID
-	r.muID.Unlock()
+	// Unmarshal and validate the id field
+	if len(aux.ID) > 0 {
+		var id any
+		if err := sonic.Unmarshal(aux.ID, &id); err != nil {
+			return fmt.Errorf("invalid id field: %w", err)
+		}
+		// If the value is "null", id will be nil
+		if id == nil {
+			r.ID = nil
+		} else {
+			switch v := id.(type) {
+			case float64:
+				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+				if v != float64(int64(v)) {
+					r.ID = v
+				} else {
+					r.ID = int64(v)
+				}
+			case string:
+				if v == "" {
+					r.ID = nil
+				} else {
+					r.ID = v
+				}
+			default:
+				return errors.New("id field must be a string or a number")
+			}
+		}
+	} else {
+		r.ID = nil
+	}
 
 	// Assign result or error accordingly
 	if aux.Result != nil {
@@ -298,25 +293,9 @@ func (r *Response) ParseFromBytes(data []byte) error {
 	return nil
 }
 
-// SetID sets the ID of the JSON-RPC response. Both ID fields are updated.
-func (r *Response) SetID(id any) error {
-	r.muID.Lock()
-	defer r.muID.Unlock()
-
-	r.id = id
-
-	bytes, err := sonic.Marshal(id)
-	if err != nil {
-		return err
-	}
-	r.idBytes = bytes
-
-	return nil
-}
-
 // String returns a string representation of the JSON-RPC response.
 func (r *Response) String() string {
-	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.id, r.Error, len(r.Result))
+	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.ID, r.Error, len(r.Result))
 }
 
 // ResponseFromStream creates a JSON-RPC response from a stream.
@@ -345,7 +324,7 @@ func (r *Response) Validate() error {
 		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
 	} */
 
-	switch r.id.(type) {
+	switch r.ID.(type) {
 	case nil, string, int64, float64:
 	default:
 		return errors.New("id field must be a string or a number")

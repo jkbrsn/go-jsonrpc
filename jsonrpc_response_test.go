@@ -100,41 +100,19 @@ func TestResponse_Equals(t *testing.T) {
 func TestResponse_ID(t *testing.T) {
 	t.Run("No ID set => returns nil", func(t *testing.T) {
 		resp := &Response{}
-		assert.Nil(t, resp.ID())
+		assert.Nil(t, resp.ID)
 	})
 
 	t.Run("SetID => returns correct ID and caches bytes", func(t *testing.T) {
 		resp := &Response{}
-		err := resp.SetID("my-unique-id")
-		require.NoError(t, err)
+		resp.ID = "my-unique-id"
 
 		// Reading the ID should return the same 'any' value
-		id := resp.ID()
+		id := resp.ID
 		require.NotNil(t, id)
 		idStr, ok := id.(string)
 		require.True(t, ok)
 		assert.Equal(t, "my-unique-id", idStr)
-	})
-
-	t.Run("ID loaded from idBytes if not cached", func(t *testing.T) {
-		resp := &Response{
-			idBytes: []byte(`123`), // Set directly
-		}
-
-		// The first call to ID() should unmarshal idBytes
-		id := resp.ID()
-		require.NotNil(t, id)
-		idVal, ok := id.(float64)
-		require.True(t, ok)
-		assert.EqualValues(t, 123, idVal)
-	})
-
-	t.Run("ID unmarshal error => logs error, returns nil", func(t *testing.T) {
-		resp := &Response{
-			idBytes: []byte(`{invalid json`),
-		}
-		got := resp.ID()
-		assert.Nil(t, got, "on parse error, ID should end up nil")
 	})
 }
 
@@ -146,29 +124,25 @@ func TestResponse_IDString(t *testing.T) {
 
 	t.Run("ID is string => returns same string", func(t *testing.T) {
 		resp := &Response{}
-		err := resp.SetID("my-unique-id")
-		require.NoError(t, err, "SetID should succeed for string")
+		resp.ID = "my-unique-id"
 		assert.Equal(t, "my-unique-id", resp.IDString())
 	})
 
 	t.Run("ID is int64 => returns string representation", func(t *testing.T) {
 		resp := &Response{}
-		err := resp.SetID(int64(12345))
-		require.NoError(t, err, "SetID should succeed for int64")
+		resp.ID = int64(12345)
 		assert.Equal(t, "12345", resp.IDString())
 	})
 
 	t.Run("ID is float64 => returns string representation", func(t *testing.T) {
 		resp := &Response{}
-		err := resp.SetID(float64(12345.67))
-		require.NoError(t, err, "SetID should succeed for float64")
+		resp.ID = float64(12345.67)
 		assert.Equal(t, "12345.67", resp.IDString())
 	})
 
 	t.Run("ID is other type => returns empty string", func(t *testing.T) {
 		resp := &Response{}
-		err := resp.SetID([]int{1, 2, 3})
-		require.NoError(t, err, "SetID should succeed for slice")
+		resp.ID = []int{1, 2, 3}
 		assert.Equal(t, "", resp.IDString())
 	})
 }
@@ -217,7 +191,7 @@ func TestResponse_IsNull(t *testing.T) {
 
 	t.Run("If ID is non-zero => false", func(t *testing.T) {
 		resp := &Response{}
-		_ = resp.SetID(1)
+		resp.ID = 1
 		assert.False(t, resp.IsNull(), "ID is set => not null")
 	})
 
@@ -305,7 +279,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 			name:       "Has id and result",
 			bytes:      []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 			runtimeErr: false,
-			respID:     float64(1),
+			respID:     int64(1),
 			respRes:    []byte(`{"foo":"bar"}`),
 		},
 		{
@@ -326,7 +300,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 				Code: -1234,
 				Data: "some data",
 			},
-			respID: float64(5),
+			respID: int64(5),
 		},
 		{
 			name:       "Has id and error with error string",
@@ -385,7 +359,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, resp)
 				assert.Equal(t, c.respErr, resp.Error)
-				assert.Equal(t, c.respID, resp.ID())
+				assert.Equal(t, c.respID, resp.ID)
 				assert.Equal(t, c.respRes, resp.Result)
 			}
 		})
@@ -469,13 +443,4 @@ func TestResponseFromStream(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestResponse_SetID(t *testing.T) {
-	resp := &Response{}
-	err := resp.SetID(1234)
-	require.NoError(t, err)
-	// Confirm that both id and idBytes were set
-	assert.Equal(t, 1234, resp.ID())
-	assert.Equal(t, []byte(`1234`), resp.idBytes)
 }
