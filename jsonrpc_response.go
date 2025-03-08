@@ -90,25 +90,6 @@ func (r *Response) IsEmpty() bool {
 	return false
 }
 
-// IsNull determines if the JSON-RPC response is null.
-func (r *Response) IsNull() bool {
-	if r == nil {
-		return true
-	}
-
-	r.muResult.RLock()
-	defer r.muResult.RUnlock()
-
-	r.muErr.RLock()
-	defer r.muErr.RUnlock()
-
-	if len(r.Result) == 0 && r.Error == nil && r.ID == nil {
-		return true
-	}
-
-	return false
-}
-
 // MarshalJSON marshals a JSON-RPC response into a byte slice.
 func (r *Response) MarshalJSON() ([]byte, error) {
 	err := r.Validate()

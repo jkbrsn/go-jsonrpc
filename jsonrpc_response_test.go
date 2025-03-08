@@ -177,34 +177,6 @@ func TestResponse_IsEmpty(t *testing.T) {
 	})
 }
 
-func TestResponse_IsNull(t *testing.T) {
-	t.Run("Nil receiver => true", func(t *testing.T) {
-		var resp *Response
-		assert.True(t, resp.IsNull())
-	})
-
-	t.Run("Empty everything => true", func(t *testing.T) {
-		resp := &Response{}
-		assert.True(t, resp.IsNull())
-	})
-
-	t.Run("If ID is non-zero => false", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = 1
-		assert.False(t, resp.IsNull(), "ID is set => not null")
-	})
-
-	t.Run("If Error is non-nil => false", func(t *testing.T) {
-		resp := &Response{Error: &Error{Code: 123}}
-		assert.False(t, resp.IsNull(), "Error => not null")
-	})
-
-	t.Run("If Result is non-empty => false", func(t *testing.T) {
-		resp := &Response{Result: []byte(`"hello"`)}
-		assert.False(t, resp.IsNull(), "non-empty result => not null")
-	})
-}
-
 func TestResponse_ParseError(t *testing.T) {
 	t.Run("Empty or 'null' => sets generic error", func(t *testing.T) {
 		resp := &Response{}
