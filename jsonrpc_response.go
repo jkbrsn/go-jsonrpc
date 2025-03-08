@@ -317,6 +317,8 @@ func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.ID, r.Error, len(r.Result))
 }
 
+// TODO: add UnmarshalJSON method
+
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
 // TODO: finish implementation
 func (r *Response) Validate() error {
