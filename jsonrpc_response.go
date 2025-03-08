@@ -28,7 +28,7 @@ type Response struct {
 // separately from how it is marshaled and unmarshaled.
 type jsonRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id,omitempty"`
+	ID      any             `json:"id"`
 	Error   *Error          `json:"error,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
 }
@@ -62,7 +62,7 @@ func (r *Response) IDString() string {
 	case int64:
 		return fmt.Sprintf("%d", id)
 	case float64:
-		return strings.Trim(fmt.Sprintf("%f", id), "0")
+		return formatFloat64ID(id)
 	default:
 		return ""
 	}
@@ -111,6 +111,11 @@ func (r *Response) IsNull() bool {
 
 // MarshalJSON marshals a JSON-RPC response into a byte slice.
 func (r *Response) MarshalJSON() ([]byte, error) {
+	err := r.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	// Retrieve the error value.
 	r.muErr.RLock()
 	errVal := r.Error

@@ -103,22 +103,40 @@ func TestResponse_IDString(t *testing.T) {
 		assert.Equal(t, "", resp.IDString())
 	})
 
-	t.Run("ID is string => returns same string", func(t *testing.T) {
+	t.Run("ID is string text", func(t *testing.T) {
 		resp := &Response{}
 		resp.ID = "my-unique-id"
 		assert.Equal(t, "my-unique-id", resp.IDString())
 	})
 
-	t.Run("ID is int64 => returns string representation", func(t *testing.T) {
+	t.Run("ID is string integer", func(t *testing.T) {
+		resp := &Response{}
+		resp.ID = "15"
+		assert.Equal(t, "15", resp.IDString())
+	})
+
+	t.Run("ID is string float", func(t *testing.T) {
+		resp := &Response{}
+		resp.ID = "33.75"
+		assert.Equal(t, "33.75", resp.IDString())
+	})
+
+	t.Run("ID is int64", func(t *testing.T) {
 		resp := &Response{}
 		resp.ID = int64(12345)
 		assert.Equal(t, "12345", resp.IDString())
 	})
 
-	t.Run("ID is float64 => returns string representation", func(t *testing.T) {
+	t.Run("ID is float64", func(t *testing.T) {
 		resp := &Response{}
 		resp.ID = float64(12345.67)
 		assert.Equal(t, "12345.67", resp.IDString())
+	})
+
+	t.Run("ID is float64 integer value", func(t *testing.T) {
+		resp := &Response{}
+		resp.ID = float64(25.0)
+		assert.Equal(t, "25.0", resp.IDString())
 	})
 
 	t.Run("ID is other type => returns empty string", func(t *testing.T) {
