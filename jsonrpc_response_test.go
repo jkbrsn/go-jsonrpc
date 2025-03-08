@@ -226,6 +226,45 @@ func TestResponse_IsEmpty(t *testing.T) {
 	})
 }
 
+// TODO: extend with more cases
+func TestResponse_MarshalJSON(t *testing.T) {
+	cases := []struct {
+		name       string
+		resp       *Response
+		runtimeErr bool
+		json       []byte
+	}{
+		{
+			name: "Valid Response with result",
+			resp: &Response{ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			json: []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
+		},
+		{
+			name: "Valid Response with Error",
+			resp: &Response{ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
+			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
+		},
+		{
+			name: "Valid Response with errBytes",
+			resp: &Response{ID: nil, errBytes: []byte(`{"code":123,"message":"test msg"}`)},
+			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			marshalled, err := tc.resp.MarshalJSON()
+			if tc.runtimeErr {
+				assert.Error(t, err)
+				assert.Nil(t, marshalled)
+			} else {
+				assert.NoError(t, err)
+				assert.JSONEq(t, string(tc.json), string(marshalled))
+			}
+		})
+	}
+}
+
 func TestResponse_ParseFromStream(t *testing.T) {
 	t.Run("Invalid JSON", func(t *testing.T) {
 		raw := []byte(`{invalid-json`)

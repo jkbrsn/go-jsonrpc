@@ -13,7 +13,7 @@ import (
 
 // Response is a struct for JSON-RPC responses.
 type Response struct {
-	ID    any
+	ID    any // TODO: type assertion for nil, int64, float64, string?
 	rawID json.RawMessage
 	muID  sync.RWMutex
 
@@ -116,7 +116,8 @@ func (r *Response) IsEmpty() bool {
 	return emptyError && emptyResult
 }
 
-// MarshalJSON marshals a JSON-RPC response into a byte slice.
+// MarshalJSON marshals a JSON-RPC response into a byte slice. The public members ID and Error
+// will be prioritized over their raw counterparts.
 func (r *Response) MarshalJSON() ([]byte, error) {
 	err := r.Validate()
 	if err != nil {
@@ -124,17 +125,23 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	}
 
 	// Retrieve the ID value
+	r.muID.RLock()
 	var id any
 	if r.ID != nil {
 		id = r.ID
 	} else if r.rawID != nil {
 		id = r.rawID
 	} else {
-		// A JSON-RPC response must have an ID, even if it is null
-		id = "null"
+		id = nil
 	}
+	r.muID.RUnlock()
 
 	// Retrieve the error value.
+	if len(r.errBytes) > 0 && r.Error == nil {
+		if err := r.UnmarshalError(r.errBytes); err != nil {
+			return nil, fmt.Errorf("faild to unmarshal JSON-RPC error: %w", err)
+		}
+	}
 	r.muErr.RLock()
 	errVal := r.Error
 	r.muErr.RUnlock()
@@ -149,14 +156,19 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	r.muResult.RUnlock()
 
 	// Build the output struct. Fields with zero values are omitted.
-	out := jsonRPCResponse{
+	output := jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   errVal,
 		Result:  result,
 	}
 
-	return sonic.Marshal(out)
+	marshalled, err := sonic.Marshal(output)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON-RPC response: %w", err)
+	}
+
+	return marshalled, nil
 }
 
 // ParseFromStream parses a JSON-RPC response from a stream.
@@ -404,7 +416,7 @@ func (r *Response) Validate() error {
 	if r.Error != nil && r.Result != nil {
 		return errors.New("response must not contain both result and error")
 	}
-	if r.Error == nil && r.Result == nil {
+	if r.Error == nil && len(r.errBytes) == 0 && r.Result == nil {
 		return errors.New("response must contain either result or error")
 	}
 
