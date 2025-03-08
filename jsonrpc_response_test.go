@@ -46,6 +46,24 @@ func TestResponse_Equals(t *testing.T) {
 			assertion: true,
 		},
 		{
+			name:      "Differen jsonrpc",
+			this:      &Response{JSONRPC: "2.0"},
+			other:     &Response{JSONRPC: "1.0"},
+			assertion: false,
+		},
+		{
+			name:      "Different ID:s",
+			this:      &Response{ID: "id1"},
+			other:     &Response{ID: "id2"},
+			assertion: false,
+		},
+		{
+			name:      "Different ID types",
+			this:      &Response{ID: "some-id"},
+			other:     &Response{ID: 24},
+			assertion: false,
+		},
+		{
 			name:      "Different errors",
 			this:      &Response{Error: &Error{Code: 123, Message: "error1"}},
 			other:     &Response{Error: &Error{Code: 456, Message: "error2"}},
