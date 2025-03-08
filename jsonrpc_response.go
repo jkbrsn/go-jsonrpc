@@ -314,7 +314,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 
 // String returns a string representation of the JSON-RPC response.
 func (r *Response) String() string {
-	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.ID, r.Error, len(r.Result))
+	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.ID, r.Error, len(r.Result))
 }
 
 // TODO: add UnmarshalJSON method
