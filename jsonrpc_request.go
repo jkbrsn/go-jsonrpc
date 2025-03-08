@@ -143,7 +143,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Validate checks if the JSON-RPC request has all required fields populated.
+// Validate checks if the JSON-RPC request conforms to the JSON-RPC specification.
 func (req *Request) Validate() error {
 	if req == nil {
 		return errors.New("request is nil")
@@ -154,6 +154,7 @@ func (req *Request) Validate() error {
 	if req.Method == "" {
 		return errors.New("method field is required")
 	}
+
 	switch req.ID.(type) {
 	case nil, string, int64, float64:
 	default:
@@ -164,6 +165,7 @@ func (req *Request) Validate() error {
 	default:
 		return errors.New("params field must be either an array, an object, or nil")
 	}
+
 	return nil
 }
 
