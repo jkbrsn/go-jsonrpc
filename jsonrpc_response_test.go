@@ -236,17 +236,17 @@ func TestResponse_MarshalJSON(t *testing.T) {
 	}{
 		{
 			name: "Valid Response with result",
-			resp: &Response{ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			resp: &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
 			json: []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 		},
 		{
 			name: "Valid Response with Error",
-			resp: &Response{ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
+			resp: &Response{JSONRPC: "2.0", ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
 			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
 		},
 		{
 			name: "Valid Response with errBytes",
-			resp: &Response{ID: nil, errBytes: []byte(`{"code":123,"message":"test msg"}`)},
+			resp: &Response{JSONRPC: "2.0", ID: nil, errBytes: []byte(`{"code":123,"message":"test msg"}`)},
 			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
 		},
 	}

@@ -13,6 +13,8 @@ import (
 
 // Response is a struct for JSON-RPC responses.
 type Response struct {
+	JSONRPC string
+
 	ID    any // TODO: type assertion for nil, int64, float64, string?
 	rawID json.RawMessage
 	muID  sync.RWMutex
@@ -157,7 +159,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 	// Build the output struct. Fields with zero values are omitted.
 	output := jsonRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: r.JSONRPC,
 		ID:      id,
 		Error:   errVal,
 		Result:  result,
@@ -204,6 +206,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 	if aux.JSONRPC != "2.0" {
 		return errors.New("invalid jsonrpc version: " + aux.JSONRPC)
 	}
+	r.JSONRPC = aux.JSONRPC
 
 	// Validate that either result or error is present
 	resultExists := len(aux.Result) > 0
@@ -370,9 +373,9 @@ func (r *Response) Validate() error {
 		return errors.New("response is nil")
 	}
 
-	/* if r.JSONRPC != "2.0" {
+	if r.JSONRPC != "2.0" {
 		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
-	} */
+	}
 
 	switch r.ID.(type) {
 	case nil, string, int64, float64:
