@@ -244,7 +244,6 @@ func TestResponse_IsEmpty(t *testing.T) {
 	})
 }
 
-// TODO: extend with more cases
 func TestResponse_MarshalJSON(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -253,19 +252,29 @@ func TestResponse_MarshalJSON(t *testing.T) {
 		json       []byte
 	}{
 		{
-			name: "Valid Response with result",
+			name: "Response with result",
 			resp: &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
 			json: []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 		},
 		{
-			name: "Valid Response with Error",
+			name: "Response with Error",
 			resp: &Response{JSONRPC: "2.0", ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
 			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
 		},
 		{
-			name: "Valid Response with rawError",
+			name: "Response with rawError and nil ID",
 			resp: &Response{JSONRPC: "2.0", ID: nil, rawError: []byte(`{"code":123,"message":"test msg"}`)},
 			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
+		},
+		{
+			name: "Invalid: both result and error",
+			resp: &Response{
+				JSONRPC: "2.0",
+				ID:      "first",
+				Result:  []byte(`{"foo":"bar"}`),
+				Error:   &Error{Code: 123, Message: "test msg"},
+			},
+			runtimeErr: true,
 		},
 	}
 
