@@ -292,6 +292,7 @@ func TestResponse_MarshalJSON(t *testing.T) {
 	}
 }
 
+// TODO: add case with input data larger than 16KB, to test chunked reading
 func TestResponse_ParseFromStream(t *testing.T) {
 	t.Run("Invalid JSON", func(t *testing.T) {
 		raw := []byte(`{invalid-json`)
