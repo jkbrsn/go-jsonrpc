@@ -69,25 +69,49 @@ func (r *Response) IDString() string {
 }
 
 // IsEmpty returns whether the JSON-RPC response can be considered empty.
+// TODO: add validation + error return?
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
 	}
 
+	r.muErr.RLock()
+	defer r.muErr.RUnlock()
 	r.muResult.RLock()
 	defer r.muResult.RUnlock()
 
-	lnr := len(r.Result)
-	if lnr == 0 ||
-		(lnr == 4 && r.Result[0] == '"' && r.Result[1] == '0' && r.Result[2] == 'x' && r.Result[3] == '"') ||
-		(lnr == 4 && r.Result[0] == 'n' && r.Result[1] == 'u' && r.Result[2] == 'l' && r.Result[3] == 'l') ||
-		(lnr == 2 && r.Result[0] == '"' && r.Result[1] == '"') ||
-		(lnr == 2 && r.Result[0] == '[' && r.Result[1] == ']') ||
-		(lnr == 2 && r.Result[0] == '{' && r.Result[1] == '}') {
+	// A JSON-RPC response is considered empty if it has no error and an empty result
+	if r.Error == nil && len(r.Result) == 0 {
 		return true
 	}
 
-	return false
+	// A JSON-RPC response error is considered empty if it's empty or contains a zero code,
+	// a null message, or an empty data field.
+	var emptyError bool
+	// TODO: breakout into Error method
+	if r.Error != nil {
+		emptyError = r.Error.Code == 0 && r.Error.Message == ""
+	} else {
+		// If the error field is nil, it is considered empty if it has a zero code and an empty message
+		emptyError = true
+	}
+
+	// A JSON-RPC response result id considered empty if it's empty or contains a zero hex value,
+	// a null value, an empty string, an empty array, or an empty object.
+	var emptyResult bool
+	resultBytes := len(r.Result)
+	if resultBytes == 0 ||
+		(resultBytes == 4 && r.Result[0] == '"' && r.Result[1] == '0' && r.Result[2] == 'x' && r.Result[3] == '"') ||
+		(resultBytes == 4 && r.Result[0] == 'n' && r.Result[1] == 'u' && r.Result[2] == 'l' && r.Result[3] == 'l') ||
+		(resultBytes == 2 && r.Result[0] == '"' && r.Result[1] == '"') ||
+		(resultBytes == 2 && r.Result[0] == '[' && r.Result[1] == ']') ||
+		(resultBytes == 2 && r.Result[0] == '{' && r.Result[1] == '}') {
+		emptyResult = true
+	} else {
+		emptyResult = false
+	}
+
+	return emptyError && emptyResult
 }
 
 // MarshalJSON marshals a JSON-RPC response into a byte slice.

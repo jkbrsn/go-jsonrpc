@@ -147,17 +147,7 @@ func TestResponse_IDString(t *testing.T) {
 }
 
 func TestResponse_IsEmpty(t *testing.T) {
-	t.Run("Nil receiver => true", func(t *testing.T) {
-		var resp *Response
-		assert.True(t, resp.IsEmpty())
-	})
-
-	t.Run("Empty => true", func(t *testing.T) {
-		resp := &Response{}
-		assert.True(t, resp.IsEmpty())
-	})
-
-	t.Run("Various special results => true", func(t *testing.T) {
+	t.Run("Results considered empty", func(t *testing.T) {
 		cases := [][]byte{
 			[]byte(`"0x"`),
 			[]byte(`null`),
@@ -171,9 +161,68 @@ func TestResponse_IsEmpty(t *testing.T) {
 		}
 	})
 
-	t.Run("Non-empty => false", func(t *testing.T) {
-		resp := &Response{Result: []byte(`"some-value"`)}
-		assert.False(t, resp.IsEmpty())
+	t.Run("Empty Response", func(t *testing.T) {
+		cases := []struct {
+			name string
+			resp *Response
+		}{
+			{
+				name: "Nil receiver",
+				resp: nil,
+			},
+			{
+				name: "Empty response",
+				resp: &Response{},
+			},
+			{
+				name: "Result is empty",
+				resp: &Response{Result: []byte{}},
+			},
+			{
+				name: "Error is empty",
+				resp: &Response{Error: &Error{}},
+			},
+			{
+				name: "Result and Error are empty",
+				resp: &Response{Result: []byte{}, Error: &Error{}},
+			},
+			{
+				name: "Error without Code or Message",
+				resp: &Response{Error: &Error{Data: "some data"}},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				assert.True(t, tc.resp.IsEmpty())
+			})
+		}
+	})
+
+	t.Run("Non-empty Response", func(t *testing.T) {
+		cases := []struct {
+			name string
+			resp *Response
+		}{
+			{
+				name: "Result only",
+				resp: &Response{Result: []byte(`"some-value"`)},
+			},
+			{
+				name: "Error only",
+				resp: &Response{Error: &Error{Code: 123, Message: "some error"}},
+			},
+			{
+				name: "Result and error",
+				resp: &Response{Result: []byte(`"some-value"`), Error: &Error{Code: 123, Message: "some error"}},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				assert.False(t, tc.resp.IsEmpty())
+			})
+		}
 	})
 }
 
