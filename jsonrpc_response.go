@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -42,12 +41,21 @@ func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
 	}
-
-	if r.Error != nil && other.Error != nil {
-		if r.Error.Code != other.Error.Code || r.Error.Message != other.Error.Message {
-			return false
-		}
+	if r.JSONRPC != other.JSONRPC {
+		return false
 	}
+	if r.ID != other.ID {
+		return false
+	}
+
+	if !r.Error.Equals(other.Error) {
+		return false
+	}
+
+	r.muResult.RLock()
+	other.muResult.RLock()
+	defer r.muResult.RUnlock()
+	defer other.muResult.RUnlock()
 
 	if r.Result != nil && other.Result != nil {
 		if string(r.Result) != string(other.Result) {
@@ -84,21 +92,12 @@ func (r *Response) IsEmpty() bool {
 	r.muResult.RLock()
 	defer r.muResult.RUnlock()
 
-	// A JSON-RPC response is considered empty if it has no error and an empty result
+	// Case: both error and result are empty
 	if r.Error == nil && len(r.Result) == 0 {
 		return true
 	}
 
-	// A JSON-RPC response error is considered empty if it's empty or contains a zero code,
-	// a null message, or an empty data field.
-	var emptyError bool
-	// TODO: breakout into Error method
-	if r.Error != nil {
-		emptyError = r.Error.Code == 0 && r.Error.Message == ""
-	} else {
-		// If the error field is nil, it is considered empty if it has a zero code and an empty message
-		emptyError = true
-	}
+	emptyError := r.Error.IsEmpty()
 
 	// A JSON-RPC response result id considered empty if it's empty or contains a zero hex value,
 	// a null value, an empty string, an empty array, or an empty object.
@@ -140,8 +139,9 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 	// Retrieve the error value.
 	if len(r.errBytes) > 0 && r.Error == nil {
-		if err := r.UnmarshalError(r.errBytes); err != nil {
-			return nil, fmt.Errorf("faild to unmarshal JSON-RPC error: %w", err)
+		r.Error = &Error{}
+		if err := r.Error.UnmarshalJSON(r.errBytes); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
 	}
 	r.muErr.RLock()
@@ -245,73 +245,6 @@ func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.ID, r.Error, len(r.Result))
 }
 
-// UnmarshalError unmarshals an error from a raw JSON-RPC response.
-// TODO: move to Error
-func (r *Response) UnmarshalError(raw json.RawMessage) error {
-	r.muErr.Lock()
-	defer r.muErr.Unlock()
-
-	strMsg := string(raw)
-
-	// Trim whitespace and check for null
-	trimmed := strings.TrimSpace(strMsg)
-	if trimmed == "" || trimmed == "null" {
-		r.Error = &Error{
-			Code:    ServerSideException,
-			Message: "empty error",
-			Data:    "",
-		}
-		return nil
-	}
-
-	// 1. Unmarshal the error as a standard JSON-RPC error
-	var rpcErr Error
-	if err := sonic.UnmarshalString(strMsg, &rpcErr); err == nil {
-		// If at least one of Code or Message is set, consider a valid error
-		if rpcErr.Code != 0 || rpcErr.Message != "" {
-			r.Error = &rpcErr
-			return nil
-		}
-	}
-
-	// 2. Unmarshal an error with numeric code, message, and data fields
-	numericError := struct {
-		Code    int    `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
-		Data    string `json:"data,omitempty"`
-	}{}
-	if err := sonic.UnmarshalString(strMsg, &numericError); err == nil {
-		if numericError.Code != 0 || numericError.Message != "" || numericError.Data != "" {
-			r.Error = &Error{
-				Code:    numericError.Code,
-				Message: numericError.Message,
-				Data:    numericError.Data,
-			}
-			return nil
-		}
-	}
-
-	// 3. Unmarshal an error with the error field
-	errorStrWrapper := struct {
-		Error string `json:"error"`
-	}{}
-	if err := sonic.UnmarshalString(strMsg, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
-		r.Error = &Error{
-			Code:    ServerSideException,
-			Message: errorStrWrapper.Error,
-		}
-		return nil
-	}
-
-	// 4. Fallback: if none of the above cases match, set the raw message as the error message
-	r.Error = &Error{
-		Code:    ServerSideException,
-		Message: strMsg,
-	}
-
-	return nil
-}
-
 // UnmarshalJSON unmarshals the input data into the members of Response. Note that the Result field
 // is stored as raw JSON bytes, and will not be unmarshalled.
 func (r *Response) UnmarshalJSON(data []byte) error {
@@ -354,12 +287,16 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 	}
 	r.muID.Unlock()
 
-	// Unmarshal the Error field
+	// Unmarshal the Error field if the Result is empty
 	r.muResult.RLock()
 	if len(r.Result) == 0 {
-		if err := r.UnmarshalError(r.errBytes); err != nil {
-			return err
+		r.muErr.RLock()
+		r.Error = &Error{}
+		err := r.Error.UnmarshalJSON(r.errBytes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
+		r.muErr.RUnlock()
 	}
 	r.muResult.RUnlock()
 

@@ -320,65 +320,6 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 	})
 }
 
-func TestResponse_UnmarshalError(t *testing.T) {
-	t.Run("Empty or 'null'", func(t *testing.T) {
-		resp := &Response{}
-		err := resp.UnmarshalError([]byte(""))
-		require.NoError(t, err)
-		require.NotNil(t, resp.Error)
-		assert.Equal(t, ServerSideException, resp.Error.Code)
-		assert.Contains(t, resp.Error.Message, "empty error")
-
-		resp2 := &Response{}
-		err = resp2.UnmarshalError([]byte("null"))
-		require.NoError(t, err)
-		assert.NotNil(t, resp2.Error)
-		assert.Equal(t, -32603, resp2.Error.Code)
-	})
-
-	t.Run("Well-formed JSON-RPC error", func(t *testing.T) {
-		raw := []byte(`{"code": -32000, "message": "some error", "data": "details"}`)
-		resp := &Response{}
-		err := resp.UnmarshalError(raw)
-		require.NoError(t, err)
-		require.NotNil(t, resp.Error)
-		assert.Equal(t, -32000, resp.Error.Code)
-		assert.Equal(t, "some error", resp.Error.Message)
-		assert.Equal(t, "details", resp.Error.Data)
-	})
-
-	t.Run("Numeric error", func(t *testing.T) {
-		raw := []byte(`{"code":123,"message":"test msg"}`)
-		resp := &Response{}
-		err := resp.UnmarshalError(raw)
-		require.NoError(t, err)
-		require.NotNil(t, resp.Error)
-		assert.Equal(t, 123, resp.Error.Code)
-		assert.Equal(t, "test msg", resp.Error.Message)
-		assert.Nil(t, resp.Error.Data) // not provided => nil
-	})
-
-	t.Run("Case with only 'error' field", func(t *testing.T) {
-		raw := []byte(`{"error": "this is an error string"}`)
-		resp := &Response{}
-		err := resp.UnmarshalError(raw)
-		require.NoError(t, err)
-		assert.NotNil(t, resp.Error)
-		assert.Equal(t, ServerSideException, resp.Error.Code)
-		assert.Equal(t, "this is an error string", resp.Error.Message)
-	})
-
-	t.Run("Case fallback", func(t *testing.T) {
-		raw := []byte(`some-non-json-or-other`)
-		resp := &Response{}
-		err := resp.UnmarshalError(raw)
-		require.NoError(t, err)
-		assert.NotNil(t, resp.Error)
-		assert.Equal(t, ServerSideException, resp.Error.Code)
-		assert.Equal(t, "some-non-json-or-other", resp.Error.Message)
-	})
-}
-
 func TestResponse_UnmarshalJSON(t *testing.T) {
 	cases := []struct {
 		name       string
