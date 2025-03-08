@@ -19,7 +19,7 @@ type Response struct {
 	muID  sync.RWMutex
 
 	Error    *Error
-	errBytes json.RawMessage
+	rawError json.RawMessage
 	muErr    sync.RWMutex
 
 	Result   json.RawMessage
@@ -81,14 +81,11 @@ func (r *Response) IDString() string {
 }
 
 // IsEmpty returns whether the JSON-RPC response can be considered empty.
-// TODO: add validation + error return?
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
 	}
 
-	r.muErr.RLock()
-	defer r.muErr.RUnlock()
 	r.muResult.RLock()
 	defer r.muResult.RUnlock()
 
@@ -138,9 +135,9 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	r.muID.RUnlock()
 
 	// Retrieve the error value.
-	if len(r.errBytes) > 0 && r.Error == nil {
+	if len(r.rawError) > 0 && r.Error == nil {
 		r.Error = &Error{}
-		if err := r.Error.UnmarshalJSON(r.errBytes); err != nil {
+		if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
 	}
@@ -231,7 +228,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		r.muResult.Unlock()
 	} else {
 		r.muErr.Lock()
-		r.errBytes = aux.Error
+		r.rawError = aux.Error
 		r.muErr.Unlock()
 	}
 
@@ -292,7 +289,7 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 	if len(r.Result) == 0 {
 		r.muErr.RLock()
 		r.Error = &Error{}
-		err := r.Error.UnmarshalJSON(r.errBytes)
+		err := r.Error.UnmarshalJSON(r.rawError)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
@@ -304,7 +301,6 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 }
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
-// TODO: finish implementation
 func (r *Response) Validate() error {
 	if r == nil {
 		return errors.New("response is nil")
@@ -323,7 +319,7 @@ func (r *Response) Validate() error {
 	if r.Error != nil && r.Result != nil {
 		return errors.New("response must not contain both result and error")
 	}
-	if r.Error == nil && len(r.errBytes) == 0 && r.Result == nil {
+	if r.Error == nil && len(r.rawError) == 0 && r.Result == nil {
 		return errors.New("response must contain either result or error")
 	}
 

@@ -245,8 +245,8 @@ func TestResponse_MarshalJSON(t *testing.T) {
 			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
 		},
 		{
-			name: "Valid Response with errBytes",
-			resp: &Response{JSONRPC: "2.0", ID: nil, errBytes: []byte(`{"code":123,"message":"test msg"}`)},
+			name: "Valid Response with rawError",
+			resp: &Response{JSONRPC: "2.0", ID: nil, rawError: []byte(`{"code":123,"message":"test msg"}`)},
 			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
 		},
 	}
@@ -300,7 +300,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 		assert.NotNil(t, resp.rawID)
 		assert.NotNil(t, resp.Result)
 		assert.Nil(t, resp.Error)
-		assert.Nil(t, resp.errBytes)
+		assert.Nil(t, resp.rawError)
 	})
 	t.Run("Invalid JSON", func(t *testing.T) {
 		raw := []byte(`{invalid-json`)
