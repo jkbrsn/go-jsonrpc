@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// TODO: add tests for the utils
+// TODO: add more exceptions
+
 const ServerSideException = -32603
 
 // formatFloat64ID formats a float64 ID as a string, removing trailing zeroes.
