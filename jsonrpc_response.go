@@ -13,10 +13,12 @@ import (
 
 // Response is a struct for JSON-RPC responses.
 type Response struct {
-	ID any
+	ID    any
+	rawID json.RawMessage
+	muID  sync.RWMutex
 
 	Error    *Error
-	errBytes []byte
+	errBytes json.RawMessage
 	muErr    sync.RWMutex
 
 	Result   json.RawMessage
@@ -125,6 +127,8 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	var id any
 	if r.ID != nil {
 		id = r.ID
+	} else if r.rawID != nil {
+		id = r.rawID
 	} else {
 		// A JSON-RPC response must have an ID, even if it is null
 		id = "null"
@@ -155,74 +159,6 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	return sonic.Marshal(out)
 }
 
-// ParseError parses an error from a raw JSON-RPC response.
-func (r *Response) ParseError(raw string) error {
-	r.muErr.Lock()
-	defer r.muErr.Unlock()
-
-	// Clear previously stored error
-	r.errBytes = nil
-
-	// Trim whitespace and check for null
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || trimmed == "null" {
-		r.Error = &Error{
-			Code:    ServerSideException,
-			Message: "empty error",
-			Data:    "",
-		}
-		return nil
-	}
-
-	// 1. Unmarshal the error as a standard JSON-RPC error
-	var rpcErr Error
-	if err := sonic.UnmarshalString(raw, &rpcErr); err == nil {
-		// If at least one of Code or Message is set, consider a valid error
-		if rpcErr.Code != 0 || rpcErr.Message != "" {
-			r.Error = &rpcErr
-			r.errBytes = str2Mem(raw)
-			return nil
-		}
-	}
-
-	// 2. Unmarshal an error with numeric code, message, and data fields
-	numericError := struct {
-		Code    int    `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
-		Data    string `json:"data,omitempty"`
-	}{}
-	if err := sonic.UnmarshalString(raw, &numericError); err == nil {
-		if numericError.Code != 0 || numericError.Message != "" || numericError.Data != "" {
-			r.Error = &Error{
-				Code:    numericError.Code,
-				Message: numericError.Message,
-				Data:    numericError.Data,
-			}
-			return nil
-		}
-	}
-
-	// 3. Unmarshal an error with the error field
-	errorStrWrapper := struct {
-		Error string `json:"error"`
-	}{}
-	if err := sonic.UnmarshalString(raw, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
-		r.Error = &Error{
-			Code:    ServerSideException,
-			Message: errorStrWrapper.Error,
-		}
-		return nil
-	}
-
-	// 4. Fallback: if none of the above cases match, set the raw message as the error message
-	r.Error = &Error{
-		Code:    ServerSideException,
-		Message: raw,
-	}
-
-	return nil
-}
-
 // ParseFromStream parses a JSON-RPC response from a stream.
 func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	// 16KB chunks by default
@@ -235,7 +171,9 @@ func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	return r.ParseFromBytes(data)
 }
 
-// ParseFromBytes parses a JSON-RPC response from a byte slice.
+// ParseFromBytes parses a JSON-RPC response from a byte slice. This function does not unmarshal
+// any of the []byte data, it only stores the raw slices in the Response, to allow for any
+// unmarshalling to occur at the caller's discretion.
 func (r *Response) ParseFromBytes(data []byte) error {
 	// Define an auxiliary struct that maps directly to the JSON-RPC response structure
 	type jsonRPCResponseAux struct {
@@ -252,7 +190,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 
 	// Validate jsonrpc version
 	if aux.JSONRPC != "2.0" {
-		return errors.New("invalid jsonrpc version")
+		return errors.New("invalid jsonrpc version: " + aux.JSONRPC)
 	}
 
 	// Validate that either result or error is present
@@ -266,8 +204,14 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		return errors.New("response must not contain both result and error")
 	}
 
+	// Parse the ID field
+	r.muID.Lock()
+	r.rawID = aux.ID
+	r.muID.Unlock()
+
+	// TODO: move to unmarshal function
 	// Unmarshal and validate the id field
-	if len(aux.ID) > 0 {
+	/* if len(aux.ID) > 0 {
 		var id any
 		if err := sonic.Unmarshal(aux.ID, &id); err != nil {
 			return fmt.Errorf("invalid id field: %w", err)
@@ -296,7 +240,7 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		}
 	} else {
 		r.ID = nil
-	}
+	} */
 
 	// Assign result or error accordingly
 	if aux.Result != nil {
@@ -304,10 +248,12 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		r.Result = aux.Result
 		r.muResult.Unlock()
 	} else {
-		if err := r.ParseError(string(aux.Error)); err != nil {
-			return err
-		}
+		r.muErr.Lock()
+		r.errBytes = aux.Error
+		r.muErr.Unlock()
 	}
+
+	// TODO: validate ?
 
 	return nil
 }
@@ -317,7 +263,126 @@ func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.ID, r.Error, len(r.Result))
 }
 
-// TODO: add UnmarshalJSON method
+// UnmarshalError unmarshals an error from a raw JSON-RPC response.
+// TODO: move to Error
+func (r *Response) UnmarshalError(raw json.RawMessage) error {
+	r.muErr.Lock()
+	defer r.muErr.Unlock()
+
+	strMsg := string(raw)
+
+	// Trim whitespace and check for null
+	trimmed := strings.TrimSpace(strMsg)
+	if trimmed == "" || trimmed == "null" {
+		r.Error = &Error{
+			Code:    ServerSideException,
+			Message: "empty error",
+			Data:    "",
+		}
+		return nil
+	}
+
+	// 1. Unmarshal the error as a standard JSON-RPC error
+	var rpcErr Error
+	if err := sonic.UnmarshalString(strMsg, &rpcErr); err == nil {
+		// If at least one of Code or Message is set, consider a valid error
+		if rpcErr.Code != 0 || rpcErr.Message != "" {
+			r.Error = &rpcErr
+			return nil
+		}
+	}
+
+	// 2. Unmarshal an error with numeric code, message, and data fields
+	numericError := struct {
+		Code    int    `json:"code,omitempty"`
+		Message string `json:"message,omitempty"`
+		Data    string `json:"data,omitempty"`
+	}{}
+	if err := sonic.UnmarshalString(strMsg, &numericError); err == nil {
+		if numericError.Code != 0 || numericError.Message != "" || numericError.Data != "" {
+			r.Error = &Error{
+				Code:    numericError.Code,
+				Message: numericError.Message,
+				Data:    numericError.Data,
+			}
+			return nil
+		}
+	}
+
+	// 3. Unmarshal an error with the error field
+	errorStrWrapper := struct {
+		Error string `json:"error"`
+	}{}
+	if err := sonic.UnmarshalString(strMsg, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
+		r.Error = &Error{
+			Code:    ServerSideException,
+			Message: errorStrWrapper.Error,
+		}
+		return nil
+	}
+
+	// 4. Fallback: if none of the above cases match, set the raw message as the error message
+	r.Error = &Error{
+		Code:    ServerSideException,
+		Message: strMsg,
+	}
+
+	return nil
+}
+
+// UnmarshalJSON unmarshals the input data into the members of Response. Note that the Result field
+// is stored as raw JSON bytes, and will not be unmarshalled.
+func (r *Response) UnmarshalJSON(data []byte) error {
+	err := r.ParseFromBytes(data)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON-RPC response: %w", err)
+	}
+
+	// Unmarshal the ID field
+	r.muID.Lock()
+	if len(r.rawID) > 0 {
+		var id any
+		if err := sonic.Unmarshal(r.rawID, &id); err != nil {
+			return fmt.Errorf("invalid id field: %w", err)
+		}
+		// If the value is "null", id will be nil
+		if id == nil {
+			r.ID = nil
+		} else {
+			switch v := id.(type) {
+			case float64:
+				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+				if v != float64(int64(v)) {
+					r.ID = v
+				} else {
+					r.ID = int64(v)
+				}
+			case string:
+				if v == "" {
+					r.ID = nil
+				} else {
+					r.ID = v
+				}
+			default:
+				return errors.New("id field must be a string or a number")
+			}
+		}
+	} else {
+		r.ID = nil
+	}
+	r.muID.Unlock()
+
+	// Unmarshal the Error field
+	r.muResult.RLock()
+	if len(r.Result) == 0 {
+		if err := r.UnmarshalError(r.errBytes); err != nil {
+			return err
+		}
+	}
+	r.muResult.RUnlock()
+
+	return nil
+}
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
 // TODO: finish implementation

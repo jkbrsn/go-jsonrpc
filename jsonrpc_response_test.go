@@ -226,26 +226,81 @@ func TestResponse_IsEmpty(t *testing.T) {
 	})
 }
 
-func TestResponse_ParseError(t *testing.T) {
-	t.Run("Empty or 'null' => sets generic error", func(t *testing.T) {
+func TestResponse_ParseFromStream(t *testing.T) {
+	t.Run("Invalid JSON", func(t *testing.T) {
+		raw := []byte(`{invalid-json`)
 		resp := &Response{}
-		err := resp.ParseError("")
+		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "{invalid-json")
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Nil reader", func(t *testing.T) {
+		resp := &Response{}
+		err := resp.ParseFromStream(nil, 12)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot read from nil reader")
+	})
+
+	t.Run("Reader error", func(t *testing.T) {
+		resp := &Response{}
+		err := resp.ParseFromStream(errReader("some read error"), 100)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "some read error")
+	})
+}
+
+func TestResponse_ParseFromBytes(t *testing.T) {
+	t.Run("Valid response with result", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`)
+		resp := &Response{}
+		err := resp.ParseFromBytes(raw)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawID)
+		assert.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.errBytes)
+	})
+	t.Run("Invalid JSON", func(t *testing.T) {
+		raw := []byte(`{invalid-json`)
+		resp := &Response{}
+		err := resp.ParseFromBytes(raw)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "{invalid-json")
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Nil data", func(t *testing.T) {
+		resp := &Response{}
+		err := resp.ParseFromBytes(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "input json is empty")
+	})
+}
+
+func TestResponse_UnmarshalError(t *testing.T) {
+	t.Run("Empty or 'null'", func(t *testing.T) {
+		resp := &Response{}
+		err := resp.UnmarshalError([]byte(""))
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
 		assert.Equal(t, ServerSideException, resp.Error.Code)
 		assert.Contains(t, resp.Error.Message, "empty error")
 
 		resp2 := &Response{}
-		err = resp2.ParseError("null")
+		err = resp2.UnmarshalError([]byte("null"))
 		require.NoError(t, err)
 		assert.NotNil(t, resp2.Error)
 		assert.Equal(t, -32603, resp2.Error.Code)
 	})
 
-	t.Run("Well-formed JSON-RPC error => sets fields", func(t *testing.T) {
-		raw := `{"code": -32000, "message": "some error", "data": "details"}`
+	t.Run("Well-formed JSON-RPC error", func(t *testing.T) {
+		raw := []byte(`{"code": -32000, "message": "some error", "data": "details"}`)
 		resp := &Response{}
-		err := resp.ParseError(raw)
+		err := resp.UnmarshalError(raw)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
 		assert.Equal(t, -32000, resp.Error.Code)
@@ -253,10 +308,10 @@ func TestResponse_ParseError(t *testing.T) {
 		assert.Equal(t, "details", resp.Error.Data)
 	})
 
-	t.Run("Case numerics => code, message, data from partial JSON", func(t *testing.T) {
-		raw := `{"code":123,"message":"test msg"}`
+	t.Run("Numeric error", func(t *testing.T) {
+		raw := []byte(`{"code":123,"message":"test msg"}`)
 		resp := &Response{}
-		err := resp.ParseError(raw)
+		err := resp.UnmarshalError(raw)
 		require.NoError(t, err)
 		require.NotNil(t, resp.Error)
 		assert.Equal(t, 123, resp.Error.Code)
@@ -264,20 +319,20 @@ func TestResponse_ParseError(t *testing.T) {
 		assert.Nil(t, resp.Error.Data) // not provided => nil
 	})
 
-	t.Run("Case with only 'error' field => sets code -32603, message from error field", func(t *testing.T) {
-		raw := `{"error": "this is an error string"}`
+	t.Run("Case with only 'error' field", func(t *testing.T) {
+		raw := []byte(`{"error": "this is an error string"}`)
 		resp := &Response{}
-		err := resp.ParseError(raw)
+		err := resp.UnmarshalError(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.Error)
 		assert.Equal(t, ServerSideException, resp.Error.Code)
 		assert.Equal(t, "this is an error string", resp.Error.Message)
 	})
 
-	t.Run("Fallback => raw is message, code -32603", func(t *testing.T) {
-		raw := `some-non-json-or-other`
+	t.Run("Case fallback", func(t *testing.T) {
+		raw := []byte(`some-non-json-or-other`)
 		resp := &Response{}
-		err := resp.ParseError(raw)
+		err := resp.UnmarshalError(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.Error)
 		assert.Equal(t, ServerSideException, resp.Error.Code)
@@ -285,7 +340,7 @@ func TestResponse_ParseError(t *testing.T) {
 	})
 }
 
-func TestResponse_ParseFromBytes(t *testing.T) {
+func TestResponse_UnmarshalJSON(t *testing.T) {
 	cases := []struct {
 		name       string
 		bytes      []byte
@@ -296,7 +351,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 		respRes    json.RawMessage
 	}{
 		{
-			name:       "Has id and result",
+			name:       "Valid response with result",
 			bytes:      []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 			runtimeErr: false,
 			respID:     int64(1),
@@ -371,7 +426,7 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			resp := &Response{}
-			err := resp.ParseFromBytes(c.bytes)
+			err := resp.UnmarshalJSON(c.bytes)
 			if c.runtimeErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), c.errMessage)
@@ -384,32 +439,6 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestResponse_ParseFromStream(t *testing.T) {
-	t.Run("Invalid JSON => error response", func(t *testing.T) {
-		raw := []byte(`{invalid-json`)
-		resp := &Response{}
-		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "{invalid-json")
-		assert.Nil(t, resp.Error)
-		assert.Nil(t, resp.Result)
-	})
-
-	t.Run("Nil reader => error return", func(t *testing.T) {
-		resp := &Response{}
-		err := resp.ParseFromStream(nil, 12)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot read from nil reader")
-	})
-
-	t.Run("Reader error => error return", func(t *testing.T) {
-		resp := &Response{}
-		err := resp.ParseFromStream(errReader("some read error"), 100)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "some read error")
-	})
 }
 
 func TestResponseFromStream(t *testing.T) {
