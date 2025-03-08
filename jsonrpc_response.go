@@ -137,13 +137,13 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	r.muID.RUnlock()
 
 	// Retrieve the error value.
+	r.muErr.RLock()
 	if len(r.rawError) > 0 && r.Error == nil {
 		r.Error = &Error{}
 		if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
 	}
-	r.muErr.RLock()
 	errVal := r.Error
 	r.muErr.RUnlock()
 
@@ -317,6 +317,11 @@ func (r *Response) Validate() error {
 	default:
 		return errors.New("id field must be a string or a number")
 	}
+
+	r.muErr.RLock()
+	r.muResult.RLock()
+	defer r.muErr.RUnlock()
+	defer r.muResult.RUnlock()
 
 	if r.Error != nil && r.Result != nil {
 		return errors.New("response must not contain both result and error")
