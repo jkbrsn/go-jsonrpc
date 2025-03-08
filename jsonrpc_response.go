@@ -317,21 +317,6 @@ func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result bytes: %d", r.ID, r.Error, len(r.Result))
 }
 
-// ResponseFromStream creates a JSON-RPC response from a stream.
-func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
-	resp := &Response{}
-
-	if body != nil {
-		err := resp.ParseFromStream(body, expectedSize)
-		if err != nil {
-			return nil, err
-		}
-		return resp, nil
-	}
-
-	return nil, fmt.Errorf("empty body")
-}
-
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
 // TODO: finish implementation
 func (r *Response) Validate() error {
@@ -357,4 +342,19 @@ func (r *Response) Validate() error {
 	}
 
 	return nil
+}
+
+// ResponseFromStream creates a JSON-RPC response from a stream.
+func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
+	resp := &Response{}
+
+	if body != nil {
+		err := resp.ParseFromStream(body, expectedSize)
+		if err != nil {
+			return nil, err
+		}
+		return resp, nil
+	}
+
+	return nil, fmt.Errorf("empty body")
 }
