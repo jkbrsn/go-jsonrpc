@@ -80,7 +80,9 @@ func (r *Response) IDString() string {
 	}
 }
 
-// IsEmpty returns whether the JSON-RPC response can be considered empty.
+// IsEmpty returns whether the JSON-RPC response can be considered empty. A result is considered
+// empty if it is an empty string, an empty array, an empty object, a null value, or a zero hex
+// value. An error is considered empty if it has a code of 0 and an empty message.
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
