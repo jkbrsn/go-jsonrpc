@@ -469,7 +469,12 @@ func TestResponseFromStream(t *testing.T) {
 	})
 
 	// Content based test cases
-	// TODO: more cases, and make sure the parsing actually denies malformed JSON-RPC responses
+	// TODO: more cases like
+	// - make sure the parsing actually denies malformed JSON-RPC responses
+	// - test with a reader that returns an error
+	// - test with a reader that returns a response larger than 16KB
+	// - test with extra fields, to make sure they are ignored in the parsing
+	// - test with a response that has both result and error
 	cases := []struct {
 		name       string
 		bytes      []byte
@@ -514,4 +519,4 @@ func TestResponseFromStream(t *testing.T) {
 	}
 }
 
-// TODO: add concurrency test
+// TODO: add concurrency test that includes concurrently calling methods such as MarshalJSON, UnmarshalJSON, and IDString
