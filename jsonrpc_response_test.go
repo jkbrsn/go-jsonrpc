@@ -418,7 +418,19 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			errMessage: "response must not contain both result and error",
 		},
 		{
-			name:       "Invalid JSON",
+			name:       "Invalid ID type",
+			bytes:      []byte(`{"jsonrpc":"2.0","id":[1,2,3],"result":{"foo":"bar"}}`),
+			runtimeErr: true,
+			errMessage: "id field must be a string or a number",
+		},
+		{
+			name:       "Invalid JSON-RPC version",
+			bytes:      []byte(`{"jsonrpc":"1.0","id":2,"result":{"foo":"bar"}}`),
+			runtimeErr: true,
+			errMessage: "invalid jsonrpc version",
+		},
+		{
+			name:       "Invalid JSON formatting",
 			bytes:      []byte(`{invalid-json`),
 			runtimeErr: true,
 			errMessage: "invalid char",

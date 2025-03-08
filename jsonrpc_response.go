@@ -309,7 +309,7 @@ func (r *Response) Validate() error {
 	}
 
 	if r.JSONRPC != "2.0" {
-		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
+		return errors.New("invalid jsonrpc version: " + r.JSONRPC)
 	}
 
 	switch r.ID.(type) {
