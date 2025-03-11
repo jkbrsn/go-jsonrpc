@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -292,17 +291,9 @@ func TestResponse_MarshalJSON(t *testing.T) {
 	}
 }
 
-// TODO: add case with input data larger than 16KB, to test chunked reading
 func TestResponse_ParseFromStream(t *testing.T) {
-	t.Run("Invalid JSON", func(t *testing.T) {
-		raw := []byte(`{invalid-json`)
-		resp := &Response{}
-		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "{invalid-json")
-		assert.Nil(t, resp.Error)
-		assert.Nil(t, resp.Result)
-	})
+	// Only basic tests here, since the internal call of ParseFromBytes is tested separately
+	// TODO: add case with input data larger than 16KB, to test chunked reading
 
 	t.Run("Nil reader", func(t *testing.T) {
 		resp := &Response{}
@@ -317,6 +308,36 @@ func TestResponse_ParseFromStream(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "some read error")
 	})
+
+	t.Run("Valid JSON with result", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"result":"OK"}`)
+		resp := &Response{}
+		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
+		require.NoError(t, err)
+		assert.Nil(t, resp.rawError)
+		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.Result)
+	})
+
+	t.Run("Valid JSON with error", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"error":{"code":-32000}}`)
+		resp := &Response{}
+		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawError)
+		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		raw := []byte(`{invalid-json`)
+		resp := &Response{}
+		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "{invalid-json")
+		assert.Nil(t, resp.rawError)
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.Result)
+	})
 }
 
 func TestResponse_ParseFromBytes(t *testing.T) {
@@ -330,21 +351,47 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 		assert.Nil(t, resp.Error)
 		assert.Nil(t, resp.rawError)
 	})
-	t.Run("Invalid JSON", func(t *testing.T) {
-		raw := []byte(`{invalid-json`)
+
+	t.Run("Valid response with error", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000}}`)
 		resp := &Response{}
 		err := resp.ParseFromBytes(raw)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "{invalid-json")
-		assert.Nil(t, resp.Error)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawID)
 		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.rawError)
 	})
 
-	t.Run("Nil data", func(t *testing.T) {
+	t.Run("Valid response with extra fields", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":1,"result":"OK","something":"extra"}`)
 		resp := &Response{}
-		err := resp.ParseFromBytes(nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "input json is empty")
+		err := resp.ParseFromBytes(raw)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawID)
+		assert.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.rawError)
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		cases := [][]byte{
+			[]byte(`"123"`),
+			[]byte(`text`),
+			[]byte(`""`),
+			[]byte(`{"broken`),
+			[]byte(`{"key-only"}`),
+		}
+
+		for _, tc := range cases {
+			resp := &Response{}
+			err := resp.ParseFromBytes(tc)
+			require.Error(t, err)
+			assert.Nil(t, resp.rawID)
+			assert.Nil(t, resp.rawError)
+			assert.Nil(t, resp.Error)
+			assert.Nil(t, resp.Result)
+		}
 	})
 }
 
@@ -462,61 +509,45 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 }
 
 func TestResponseFromStream(t *testing.T) {
-	t.Run("Nil reader => error", func(t *testing.T) {
+	// Only basic tests here, since the internal call of ParseFromStream is tested separately
+
+	t.Run("Nil reader", func(t *testing.T) {
 		resp, err := ResponseFromStream(nil, 0)
 		require.Error(t, err)
 		require.Nil(t, resp)
 	})
 
-	// Content based test cases
-	// TODO: more cases like
-	// - make sure the parsing actually denies malformed JSON-RPC responses
-	// - test with a reader that returns an error
-	// - test with a reader that returns a response larger than 16KB
-	// - test with extra fields, to make sure they are ignored in the parsing
-	// - test with a response that has both result and error
-	cases := []struct {
-		name       string
-		bytes      []byte
-		runtimeErr bool
-		expectErr  bool
-		expectRes  string
-	}{
-		{
-			name:       "nil bytes",
-			bytes:      nil,
-			runtimeErr: true,
-			expectErr:  true,
-			expectRes:  "",
-		}, {
-			name:       "valid string",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":42,"result":"OK"}`),
-			runtimeErr: false,
-			expectErr:  false,
-			expectRes:  `"OK"`,
-		}, {
-			name:       "valid object",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":42,"result":{"key":"value"}}`),
-			runtimeErr: false,
-			expectErr:  false,
-			expectRes:  `{"key":"value"}`,
-		},
-	}
+	t.Run("Reader error", func(t *testing.T) {
+		resp, err := ResponseFromStream(errReader("some read error"), 100)
+		require.Error(t, err)
+		require.Nil(t, resp)
+		assert.Contains(t, err.Error(), "some read error")
+	})
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r := io.NopCloser(bytes.NewReader(c.bytes))
-			resp, err := ResponseFromStream(r, len(c.bytes))
-			if c.runtimeErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, resp)
-				assert.Equal(t, c.expectErr, resp.Error != nil)
-				assert.Equal(t, c.expectRes, string(resp.Result))
-			}
-		})
-	}
+	t.Run("Valid JSON with result", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"result":"OK"}`)
+		resp, err := ResponseFromStream(bytes.NewReader(raw), len(raw))
+		require.NoError(t, err)
+		assert.Nil(t, resp.rawError)
+		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.Result)
+	})
+
+	t.Run("Valid JSON with error", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"error":{"code":-32000}}`)
+		resp, err := ResponseFromStream(bytes.NewReader(raw), len(raw))
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawError)
+		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		raw := []byte(`{invalid-json`)
+		resp, err := ResponseFromStream(bytes.NewReader(raw), len(raw))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "{invalid-json")
+		assert.Nil(t, resp)
+	})
 }
 
 // TODO: add concurrency test that includes concurrently calling methods such as MarshalJSON, UnmarshalJSON, and IDString

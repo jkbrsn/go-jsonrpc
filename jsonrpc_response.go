@@ -173,6 +173,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 }
 
 // ParseFromStream parses a JSON-RPC response from a stream.
+// TODO: reader vs readcloser?
 func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	// 16KB chunks by default
 	chunkSize := 16 * 1024
@@ -334,7 +335,7 @@ func (r *Response) Validate() error {
 }
 
 // ResponseFromStream creates a JSON-RPC response from a stream.
-func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
+func ResponseFromStream(body io.Reader, expectedSize int) (*Response, error) {
 	resp := &Response{}
 
 	if body != nil {
