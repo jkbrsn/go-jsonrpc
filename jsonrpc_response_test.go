@@ -520,6 +520,62 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+func TestResponse_Validate(t *testing.T) {
+	cases := []struct {
+		name       string
+		resp       *Response
+		runtimeErr bool
+		errMessage string
+	}{
+		{
+			name:       "Valid response with result",
+			resp:       &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			runtimeErr: false,
+		},
+		{
+			name:       "Valid response with error",
+			resp:       &Response{JSONRPC: "2.0", ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
+			runtimeErr: false,
+		},
+		{
+			name:       "Invalid JSON-RPC version",
+			resp:       &Response{JSONRPC: "1.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			runtimeErr: true,
+			errMessage: "invalid jsonrpc version",
+		},
+		{
+			name:       "Invalid ID type",
+			resp:       &Response{JSONRPC: "2.0", ID: []int{1, 2, 3}, Result: []byte(`{"foo":"bar"}`)},
+			runtimeErr: true,
+			errMessage: "id field must be a string or a number",
+		},
+		{
+			name:       "Both result and error",
+			resp:       &Response{JSONRPC: "2.0", ID: "first", Result: []byte(`{"foo":"bar"}`), Error: &Error{Code: 123, Message: "test msg"}},
+			runtimeErr: true,
+			errMessage: "response must not contain both result and error",
+		},
+		{
+			name:       "Neither result nor error",
+			resp:       &Response{JSONRPC: "2.0", ID: "first"},
+			runtimeErr: true,
+			errMessage: "response must contain either result or error",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.resp.Validate()
+			if c.runtimeErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), c.errMessage)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestResponseFromStream(t *testing.T) {
 	// Only basic tests here, since the internal call of ParseFromStream is tested separately
 
