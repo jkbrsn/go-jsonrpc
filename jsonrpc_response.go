@@ -334,17 +334,18 @@ func (r *Response) Validate() error {
 	return nil
 }
 
-// ResponseFromStream creates a JSON-RPC response from a stream.
-func ResponseFromStream(body io.Reader, expectedSize int) (*Response, error) {
-	resp := &Response{}
-
-	if body != nil {
-		err := resp.ParseFromStream(body, expectedSize)
-		if err != nil {
-			return nil, err
-		}
-		return resp, nil
+// ResponseFromStream parses a Response from a stream.
+func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
+	if body == nil {
+		return nil, errors.New("cannot read from nil reader")
 	}
 
-	return nil, fmt.Errorf("empty body")
+	defer body.Close()
+	resp := &Response{}
+
+	err := resp.ParseFromStream(body, expectedSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response from stream: %w", err)
+	}
+	return resp, nil
 }
