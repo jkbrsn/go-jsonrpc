@@ -305,7 +305,6 @@ func TestResponse_MarshalJSON(t *testing.T) {
 
 func TestResponse_ParseFromStream(t *testing.T) {
 	// Only basic tests here, since the internal call of ParseFromBytes is tested separately
-	// TODO: add case with input data larger than 16KB, to test chunked reading
 
 	t.Run("Nil reader", func(t *testing.T) {
 		resp := &Response{}
@@ -329,6 +328,12 @@ func TestResponse_ParseFromStream(t *testing.T) {
 		assert.Nil(t, resp.rawError)
 		assert.Nil(t, resp.Error)
 		assert.NotNil(t, resp.Result)
+
+		// Unmarshal the result to check if it's correct
+		var resultStr string
+		err = json.Unmarshal(resp.Result, &resultStr)
+		require.NoError(t, err)
+		assert.Equal(t, "OK", resultStr)
 	})
 
 	t.Run("Valid JSON with error", func(t *testing.T) {
@@ -349,6 +354,27 @@ func TestResponse_ParseFromStream(t *testing.T) {
 		assert.Nil(t, resp.rawError)
 		assert.Nil(t, resp.Error)
 		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Large JSON to test chunked reading", func(t *testing.T) {
+		// Create a JSON response larger than the 16KB chunk size
+		largeBytes := bytes.Repeat([]byte("a"), 16*1024+1)
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"result":"`)
+		raw = append(raw, largeBytes...)
+		raw = append(raw, []byte(`"}`)...)
+
+		resp := &Response{}
+		err := resp.ParseFromStream(bytes.NewReader(raw), len(raw))
+		require.NoError(t, err)
+		assert.Nil(t, resp.rawError)
+		assert.Nil(t, resp.Error)
+		require.NotNil(t, resp.Result)
+
+		// Unmarshal the result to check if it's correct
+		var resultStr string
+		err = json.Unmarshal(resp.Result, &resultStr)
+		require.NoError(t, err)
+		assert.Equal(t, string(largeBytes), resultStr)
 	})
 }
 
