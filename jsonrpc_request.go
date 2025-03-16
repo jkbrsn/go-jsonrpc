@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/bytedance/sonic"
 )
@@ -28,7 +27,7 @@ func (r *Request) IDString() string {
 	case int64:
 		return fmt.Sprintf("%d", id)
 	case float64:
-		return strings.Trim(fmt.Sprintf("%f", id), "0")
+		return formatFloat64ID(id)
 	default:
 		return ""
 	}

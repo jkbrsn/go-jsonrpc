@@ -24,6 +24,10 @@ func TestRequest_IDString(t *testing.T) {
 		assert.Equal(t, "123.456", req.IDString())
 	})
 
+	t.Run("Float64 ID, with integer value", func(t *testing.T) {
+		resp := &Request{ID: float64(25.0)}
+		assert.Equal(t, "25.0", resp.IDString())
+	})
 	t.Run("Nil ID", func(t *testing.T) {
 		req := &Request{ID: nil}
 		assert.Equal(t, "", req.IDString())
