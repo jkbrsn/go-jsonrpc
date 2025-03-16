@@ -131,6 +131,13 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		switch rawParams.(type) {
 		case []any, map[string]any, nil:
 			r.Params = rawParams
+		case string:
+			// Treat empty strings as nil
+			if rawParams == "" {
+				r.Params = nil
+			} else {
+				return errors.New("params field must be either an array, an object, or nil")
+			}
 		default:
 			return errors.New("params field must be either an array, an object, or nil")
 		}

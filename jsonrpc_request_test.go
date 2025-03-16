@@ -84,7 +84,7 @@ func TestRequest_MarshalJSON(t *testing.T) {
 				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId"}`,
 			},
 			{
-				name:     "With empty Params",
+				name:     "With empty Params array",
 				req:      &Request{JSONRPC: "2.0", Method: "eth_chainId", Params: []any{}, ID: "abc"},
 				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId","params":[]}`,
 			},
@@ -286,6 +286,7 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","extra":"field"}`),                                       // Extra field
 			[]byte(`{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}`),                                       // Empty list params
 			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{}}`),                                           // Empty object params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":""}`),                                           // Empty string params
 			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{"key": "value"}}`),                             // Object params
 			[]byte(`{"jsonrpc":"2.0","id":3,"method":"eth_getBalance","params":["0x123456", "latest"]}`),                    // Multiple params
 			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[{"address": "0x123", "block": "latest"}]}`), // Nested params
