@@ -33,7 +33,8 @@ func (r *Request) IDString() string {
 	}
 }
 
-// IsEmpty returns whether the Request can be considered empty.
+// IsEmpty returns whether the Request can be considered empty. A request is considered empty if
+// the method field is empty.
 func (r *Request) IsEmpty() bool {
 	if r == nil {
 		return true
