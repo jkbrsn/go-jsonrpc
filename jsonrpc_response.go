@@ -14,7 +14,7 @@ import (
 type Response struct {
 	JSONRPC string
 
-	ID    any // TODO: type assertion for nil, int64, float64, string?
+	ID    any
 	rawID json.RawMessage
 	muID  sync.RWMutex
 
@@ -173,11 +173,10 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 }
 
 // ParseFromStream parses a JSON-RPC response from a stream.
-// TODO: reader vs readcloser?
 func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 	// 16KB chunks by default
 	chunkSize := 16 * 1024
-	data, err := ReadAll(reader, int64(chunkSize), expectedSize)
+	data, err := readAll(reader, int64(chunkSize), expectedSize)
 	if err != nil {
 		return err
 	}
@@ -235,7 +234,9 @@ func (r *Response) ParseFromBytes(data []byte) error {
 		r.muErr.Unlock()
 	}
 
-	// TODO: validate ?
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("failed to parse JSON-RPC response: %w", err)
+	}
 
 	return nil
 }
@@ -324,7 +325,7 @@ func (r *Response) Validate() error {
 	defer r.muErr.RUnlock()
 	defer r.muResult.RUnlock()
 
-	if r.Error != nil && r.Result != nil {
+	if r.Error != nil && r.Result != nil || r.rawError != nil && r.Result != nil {
 		return errors.New("response must not contain both result and error")
 	}
 	if r.Error == nil && len(r.rawError) == 0 && r.Result == nil {

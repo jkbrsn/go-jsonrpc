@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -412,6 +413,18 @@ func TestResponse_ParseFromBytes(t *testing.T) {
 		assert.Nil(t, resp.rawError)
 	})
 
+	t.Run("Invalid response: both result and error", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":1,"result":"OK","error":{"core": -32000}}`)
+		resp := &Response{}
+		err := resp.ParseFromBytes(raw)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "response must not contain both result and error")
+		assert.Nil(t, resp.rawID)
+		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.rawError)
+	})
+
 	t.Run("Invalid JSON", func(t *testing.T) {
 		cases := [][]byte{
 			[]byte(`"123"`),
@@ -644,4 +657,50 @@ func TestResponseFromStream(t *testing.T) {
 	})
 }
 
-// TODO: add concurrency test that includes concurrently calling methods such as MarshalJSON, UnmarshalJSON, and IDString
+func TestResponse_Concurrency(t *testing.T) {
+	t.Run("Concurrent IDString", func(t *testing.T) {
+		resp := &Response{ID: int64(12345)}
+
+		var wg sync.WaitGroup
+		for range 200 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				idStr := resp.IDString()
+				assert.Equal(t, "12345", idStr)
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("Concurrent IsEmpty", func(t *testing.T) {
+		resp := &Response{Result: []byte(`"0x"`)}
+
+		var wg sync.WaitGroup
+		for range 200 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				isEmpty := resp.IsEmpty()
+				assert.True(t, isEmpty)
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("Concurrent Equals", func(t *testing.T) {
+		resp1 := &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)}
+		resp2 := &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)}
+
+		var wg sync.WaitGroup
+		for range 200 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				equal := resp1.Equals(resp2)
+				assert.True(t, equal)
+			}()
+		}
+		wg.Wait()
+	})
+}
