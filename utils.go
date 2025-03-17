@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-const InvalidRequest = -32600
-const MethodNotFound = -32601
-const InvalidParams = -32602
-const ServerSideException = -32603
-const ParseError = -32700
-
 // formatFloat64ID formats a float64 ID as a string, removing trailing zeroes.
 func formatFloat64ID(id float64) string {
 	str := strconv.FormatFloat(id, 'f', -1, 64)

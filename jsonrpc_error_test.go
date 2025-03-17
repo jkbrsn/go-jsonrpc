@@ -123,6 +123,17 @@ func TestError_UnmarshalJSON(t *testing.T) {
 		assert.Nil(t, e.Data) // not provided => nil
 	})
 
+	t.Run("Case with only 'message' and 'data'", func(t *testing.T) {
+		raw := []byte(`{"message": "this is a message","data": "this is data"}`)
+		e := &Error{}
+		err := e.UnmarshalJSON(raw)
+		require.NoError(t, err)
+		assert.NotNil(t, e)
+		assert.Equal(t, ServerSideException, e.Code)
+		assert.Contains(t, e.Message, "this is a message")
+		assert.Equal(t, "this is data", e.Data)
+	})
+
 	t.Run("Case with only 'error' field", func(t *testing.T) {
 		raw := []byte(`{"error": "this is an error string"}`)
 		e := &Error{}
@@ -163,20 +174,10 @@ func TestError_Validate(t *testing.T) {
 		assert.Contains(t, err.Error(), "code is required")
 	})
 
-	t.Run("Missing message", func(t *testing.T) {
-		e := &Error{
-			Code: -32000,
-		}
-		err := e.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "message is required")
-	})
-
 	t.Run("Empty error", func(t *testing.T) {
 		e := &Error{}
 		err := e.Validate()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "code is required")
-		assert.Contains(t, err.Error(), "message is required")
 	})
 }

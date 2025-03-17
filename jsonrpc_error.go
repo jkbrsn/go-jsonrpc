@@ -8,6 +8,15 @@ import (
 	"github.com/bytedance/sonic"
 )
 
+// JSON-RPC error codes
+const (
+	InvalidRequest      = -32600
+	MethodNotFound      = -32601
+	InvalidParams       = -32602
+	ServerSideException = -32603
+	ParseError          = -32700
+)
+
 // Error represents a JSON-RPC error.
 type Error struct {
 	Code    int    `json:"code,omitempty"`
@@ -45,11 +54,12 @@ func (e *Error) String() string {
 	return fmt.Sprintf("Code: %d, Message: %s", e.Code, e.Message)
 }
 
-// UnmarshalError unmarshals an error from a raw JSON-RPC response.
+// UnmarshalError unmarshals an error from a raw JSON-RPC response. The unmarshal logic uses
+// several fallbacks to ensure an error is produced.
 func (e *Error) UnmarshalJSON(data []byte) error {
-	strData := string(data)
 
 	// Check for null
+	strData := string(data)
 	trimmed := strings.TrimSpace(strData)
 	if trimmed == "" || trimmed == "null" {
 		e.Code = ServerSideException
@@ -58,55 +68,43 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 	}
 
 	// 1. Unmarshal the error as a standard JSON-RPC error
-
 	type alias Error // Avoid infinite recursion by using an alias
-	if err := sonic.UnmarshalString(strData, (*alias)(e)); err == nil {
+	if err := sonic.Unmarshal(data, (*alias)(e)); err == nil {
 		// If Code and Message are set, consider a valid error
-		if e.Code != 0 && e.Message != "" {
+		if e.Code != 0 {
 			return nil
 		}
 	}
 
-	// 2. Unmarshal an error with numeric code, message, and data fields
-	numericError := struct {
-		Code    int    `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
-		Data    string `json:"data,omitempty"`
-	}{}
-	if err := sonic.UnmarshalString(strData, &numericError); err == nil {
-		if numericError.Code != 0 || numericError.Message != "" || numericError.Data != "" {
-			e.Code = numericError.Code
-			e.Message = numericError.Message
-			e.Data = numericError.Data
-			return nil
-		}
-	}
-
-	// 3. Unmarshal an error with the error field
+	// 2. Try to catch common error formats
 	errorStrWrapper := struct {
 		Error string `json:"error"`
 	}{}
-	if err := sonic.UnmarshalString(strData, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
+	if err := sonic.Unmarshal(data, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
 		e.Code = ServerSideException
 		e.Message = errorStrWrapper.Error
 		return nil
 	}
 
-	// 4. Fallback: if none of the above cases match, set the raw message as the error message
+	// 3. Fallback: if none of the above cases match, set the raw message as the error message
 	e.Code = ServerSideException
 	e.Message = strData
+
+	// 4. Validate the error
+	if err := e.Validate(); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
+	}
 
 	return nil
 }
 
 // Validate checks if the error is valid according to the JSON-RPC specification.
 func (e *Error) Validate() error {
-	var err error
+	if e == nil {
+		return errors.New("error is nil")
+	}
 	if e.Code == 0 {
-		err = errors.Join(err, errors.New("code is required"))
+		return errors.New("error code is required")
 	}
-	if e.Message == "" {
-		err = errors.Join(err, errors.New("message is required"))
-	}
-	return err
+	return nil
 }
