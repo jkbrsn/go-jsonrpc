@@ -3,6 +3,7 @@
 ## current
 
 - Consider functions to unmarshal individual fields of Response (and Request?)
+- Consider not forcing "jsonrpc: 2.0" for Response
 
 ## future considerations
 
