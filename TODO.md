@@ -2,7 +2,7 @@
 
 ## current
 
-Nothing planned.
+- Functions to unmarshal individual fields of Response (and Request?)
 
 ## future considerations
 
