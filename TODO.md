@@ -2,7 +2,7 @@
 
 ## current
 
-- Functions to unmarshal individual fields of Response (and Request?)
+- Consider functions to unmarshal individual fields of Response (and Request?)
 
 ## future considerations
 

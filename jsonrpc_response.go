@@ -28,7 +28,7 @@ type Response struct {
 
 // jsonRPCResponse is an internal representation of a JSON-RPC response.
 // This is decoupled from the public struct to allow for custom handling of the response data,
-// separately from how it is marshaled and unmarshaled.
+// separately from how it is marshalled and unmarshalled.
 type jsonRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      any             `json:"id"`
@@ -36,7 +36,48 @@ type jsonRPCResponse struct {
 	Result  json.RawMessage `json:"result,omitempty"`
 }
 
+// unmarshalID unmarshalls the raw ID bytes into the ID field.
+func (r *Response) unmarshalID() error {
+	r.muID.Lock()
+	defer r.muID.Unlock()
+
+	if len(r.rawID) > 0 {
+		var id any
+		if err := sonic.Unmarshal(r.rawID, &id); err != nil {
+			return fmt.Errorf("invalid id field: %w", err)
+		}
+
+		// If the value is "null", id will be nil
+		if id == nil {
+			r.ID = nil
+		} else {
+			switch v := id.(type) {
+			case float64:
+				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+				if v != float64(int64(v)) {
+					r.ID = v
+				} else {
+					r.ID = int64(v)
+				}
+			case string:
+				if v == "" {
+					r.ID = nil
+				} else {
+					r.ID = v
+				}
+			default:
+				return errors.New("id field must be a string or a number")
+			}
+		}
+	} else {
+		r.ID = nil
+	}
+
+	return nil
+}
+
 // Equals compares the contents of two JSON-RPC responses.
+// TODO: adapt to both raw (parsed) and unmarshalled cases, test that
 func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
@@ -64,6 +105,16 @@ func (r *Response) Equals(other *Response) bool {
 	}
 
 	return true
+}
+
+func (r *Response) IDRaw() any {
+	if r.ID == nil {
+		err := r.unmarshalID()
+		if err != nil {
+			return nil
+		}
+	}
+	return r.ID
 }
 
 // IDString returns the ID as a string.
@@ -185,8 +236,8 @@ func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
 }
 
 // ParseFromBytes parses a JSON-RPC response from a byte slice. This function does not unmarshal
-// any of the []byte data, it only stores the raw slices in the Response, to allow for any
-// unmarshalling to occur at the caller's discretion.
+// the []byte data of the error or the result, it only stores the raw slices in the Response, to
+// allow for any unmarshalling to occur at the caller's discretion.
 func (r *Response) ParseFromBytes(data []byte) error {
 	// Define an auxiliary struct that maps directly to the JSON-RPC response structure
 	type jsonRPCResponseAux struct {
@@ -223,6 +274,11 @@ func (r *Response) ParseFromBytes(data []byte) error {
 	r.rawID = aux.ID
 	r.muID.Unlock()
 
+	// Also unmarshal the ID, as the ID field is imperative for use of the Response
+	if err := r.unmarshalID(); err != nil {
+		return fmt.Errorf("failed unmarshalling ID: %w", err)
+	}
+
 	// Assign result or error accordingly
 	if aux.Result != nil {
 		r.muResult.Lock()
@@ -253,40 +309,6 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal JSON-RPC response: %w", err)
 	}
-
-	// Unmarshal the ID field
-	r.muID.Lock()
-	if len(r.rawID) > 0 {
-		var id any
-		if err := sonic.Unmarshal(r.rawID, &id); err != nil {
-			return fmt.Errorf("invalid id field: %w", err)
-		}
-		// If the value is "null", id will be nil
-		if id == nil {
-			r.ID = nil
-		} else {
-			switch v := id.(type) {
-			case float64:
-				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
-				if v != float64(int64(v)) {
-					r.ID = v
-				} else {
-					r.ID = int64(v)
-				}
-			case string:
-				if v == "" {
-					r.ID = nil
-				} else {
-					r.ID = v
-				}
-			default:
-				return errors.New("id field must be a string or a number")
-			}
-		}
-	} else {
-		r.ID = nil
-	}
-	r.muID.Unlock()
 
 	// Unmarshal the Error field if the Result is empty
 	r.muResult.RLock()
