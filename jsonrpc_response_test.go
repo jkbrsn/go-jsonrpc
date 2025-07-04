@@ -615,17 +615,17 @@ func TestResponse_Validate(t *testing.T) {
 	}
 }
 
-func TestResponseFromStream(t *testing.T) {
+func TestNewResponseFromStream(t *testing.T) {
 	// Only basic tests here, since the internal call of ParseFromStream is tested separately
 
 	t.Run("Nil reader", func(t *testing.T) {
-		resp, err := ResponseFromStream(nil, 0)
+		resp, err := NewResponseFromStream(nil, 0)
 		require.Error(t, err)
 		require.Nil(t, resp)
 	})
 
 	t.Run("Reader error", func(t *testing.T) {
-		resp, err := ResponseFromStream(errReadCloser("some read error"), 100)
+		resp, err := NewResponseFromStream(errReadCloser("some read error"), 100)
 		require.Error(t, err)
 		require.Nil(t, resp)
 		assert.Contains(t, err.Error(), "some read error")
@@ -633,7 +633,7 @@ func TestResponseFromStream(t *testing.T) {
 
 	t.Run("Valid JSON with result", func(t *testing.T) {
 		raw := []byte(`{"jsonrpc":"2.0","id":42,"result":"OK"}`)
-		resp, err := ResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
+		resp, err := NewResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
 		require.NoError(t, err)
 		assert.Nil(t, resp.rawError)
 		assert.Nil(t, resp.Error)
@@ -642,7 +642,7 @@ func TestResponseFromStream(t *testing.T) {
 
 	t.Run("Valid JSON with error", func(t *testing.T) {
 		raw := []byte(`{"jsonrpc":"2.0","id":42,"error":{"code":-32000}}`)
-		resp, err := ResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
+		resp, err := NewResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawError)
 		assert.Nil(t, resp.Result)
@@ -650,7 +650,7 @@ func TestResponseFromStream(t *testing.T) {
 
 	t.Run("Invalid JSON", func(t *testing.T) {
 		raw := []byte(`{invalid-json`)
-		resp, err := ResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
+		resp, err := NewResponseFromStream(&readCloser{bytes.NewReader(raw)}, len(raw))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "{invalid-json")
 		assert.Nil(t, resp)

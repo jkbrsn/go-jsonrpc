@@ -357,8 +357,8 @@ func (r *Response) Validate() error {
 	return nil
 }
 
-// ResponseFromStream parses a Response from a stream.
-func ResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
+// NewResponseFromStream parses and returns a new Response from a stream.
+func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
