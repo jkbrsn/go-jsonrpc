@@ -615,6 +615,51 @@ func TestResponse_Validate(t *testing.T) {
 	}
 }
 
+func TestNewResponseFromBytes(t *testing.T) {
+	t.Run("Nil data", func(t *testing.T) {
+		resp, err := NewResponseFromBytes(nil)
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
+
+	t.Run("Empty data", func(t *testing.T) {
+		resp, err := NewResponseFromBytes([]byte{})
+		require.Error(t, err)
+		require.Nil(t, resp)
+	})
+
+	t.Run("Valid JSON with result", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"result":"OK"}`)
+		resp, err := NewResponseFromBytes(raw)
+		require.NoError(t, err)
+		assert.Nil(t, resp.rawError)
+		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.Result)
+
+		// Unmarshal the result to check if it's correct
+		var resultStr string
+		err = json.Unmarshal(resp.Result, &resultStr)
+		require.NoError(t, err)
+		assert.Equal(t, "OK", resultStr)
+	})
+
+	t.Run("Valid JSON with error", func(t *testing.T) {
+		raw := []byte(`{"jsonrpc":"2.0","id":42,"error":{"code":-32000}}`)
+		resp, err := NewResponseFromBytes(raw)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.rawError)
+		assert.Nil(t, resp.Result)
+	})
+
+	t.Run("Invalid JSON", func(t *testing.T) {
+		raw := []byte(`{invalid-json`)
+		resp, err := NewResponseFromBytes(raw)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "{invalid-json")
+		assert.Nil(t, resp)
+	})
+}
+
 func TestNewResponseFromStream(t *testing.T) {
 	// Only basic tests here, since the internal call of ParseFromStream is tested separately
 

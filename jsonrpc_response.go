@@ -357,18 +357,29 @@ func (r *Response) Validate() error {
 	return nil
 }
 
+// NewResponseFromBytes parses and returns a new Response from a byte slice.
+func NewResponseFromBytes(data []byte) (*Response, error) {
+	resp := &Response{}
+	err := resp.ParseFromBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response from bytes: %w", err)
+	}
+
+	return resp, nil
+}
+
 // NewResponseFromStream parses and returns a new Response from a stream.
 func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
-
 	defer body.Close()
-	resp := &Response{}
 
+	resp := &Response{}
 	err := resp.ParseFromStream(body, expectedSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse response from stream: %w", err)
 	}
+
 	return resp, nil
 }
