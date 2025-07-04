@@ -1,3 +1,5 @@
+// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
+// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (

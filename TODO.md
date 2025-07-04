@@ -1,9 +1,10 @@
 # todo
 
-## current
+## next minor
 
 - Consider functions to unmarshal individual fields of Response (and Request?)
-- Consider not forcing "jsonrpc: 2.0" for Response
+- Add dynamic options
+  - Skip forcing "jsonrpc: 2.0" (for either Request or Response or both)
 
 ## future considerations
 
