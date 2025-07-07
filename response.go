@@ -3,6 +3,7 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,81 @@ type jsonRPCResponse struct {
 	ID      any             `json:"id"`
 	Error   *Error          `json:"error,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
+}
+
+// parseFromReader parses a JSON-RPC response from a reader.
+func (r *Response) parseFromReader(reader io.Reader, expectedSize int) error {
+	// 16KB chunks by default
+	chunkSize := 16 * 1024
+	data, err := readAll(reader, int64(chunkSize), expectedSize)
+	if err != nil {
+		return err
+	}
+
+	return r.parseFromBytes(data)
+}
+
+// parseFromBytes parses a JSON-RPC response from a byte slice. This function does not unmarshal
+// the []byte data of the error or the result, it only stores the raw slices in the Response, to
+// allow for any unmarshalling to occur at the caller's discretion.
+func (r *Response) parseFromBytes(data []byte) error {
+	// Define an auxiliary struct that maps directly to the JSON-RPC response structure
+	type jsonRPCResponseAux struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  json.RawMessage `json:"result,omitempty"`
+		Error   json.RawMessage `json:"error,omitempty"`
+	}
+
+	var aux jsonRPCResponseAux
+	if err := sonic.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Validate JSON-RPC version
+	if aux.JSONRPC != "2.0" {
+		return errors.New("invalid JSON-RPC version: " + aux.JSONRPC)
+	}
+	r.JSONRPC = aux.JSONRPC
+
+	// Validate that either result or error is present
+	resultExists := len(aux.Result) > 0
+	errorExists := len(aux.Error) > 0
+
+	if !resultExists && !errorExists {
+		return errors.New("response must contain either result or error")
+	}
+	if resultExists && errorExists {
+		return errors.New("response must not contain both result and error")
+	}
+
+	// Parse the ID field
+	r.muID.Lock()
+	r.rawID = aux.ID
+	r.muID.Unlock()
+
+	// Also unmarshal the ID, as the ID field is imperative for use of the Response
+	if err := r.unmarshalID(); err != nil {
+		return fmt.Errorf("failed to unmarshal ID: %w", err)
+	}
+
+	// Assign result or error accordingly
+	if aux.Result != nil {
+		r.muResult.Lock()
+		r.Result = aux.Result
+		r.muResult.Unlock()
+	} else {
+		r.muErr.Lock()
+		r.rawError = aux.Error
+		r.muErr.Unlock()
+	}
+
+	// Validate the response
+	if err := r.Validate(); err != nil {
+		return fmt.Errorf("failed to parse JSON-RPC response: %w", err)
+	}
+
+	return nil
 }
 
 // unmarshalID unmarshalls the raw ID bytes into the ID field.
@@ -225,107 +301,68 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	return marshalled, nil
 }
 
-// ParseFromStream parses a JSON-RPC response from a stream.
-func (r *Response) ParseFromStream(reader io.Reader, expectedSize int) error {
-	// 16KB chunks by default
-	chunkSize := 16 * 1024
-	data, err := readAll(reader, int64(chunkSize), expectedSize)
-	if err != nil {
-		return err
-	}
-
-	return r.ParseFromBytes(data)
-}
-
-// ParseFromBytes parses a JSON-RPC response from a byte slice. This function does not unmarshal
-// the []byte data of the error or the result, it only stores the raw slices in the Response, to
-// allow for any unmarshalling to occur at the caller's discretion.
-func (r *Response) ParseFromBytes(data []byte) error {
-	// Define an auxiliary struct that maps directly to the JSON-RPC response structure
-	type jsonRPCResponseAux struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Result  json.RawMessage `json:"result,omitempty"`
-		Error   json.RawMessage `json:"error,omitempty"`
-	}
-
-	var aux jsonRPCResponseAux
-	if err := sonic.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	// Validate jsonrpc version
-	if aux.JSONRPC != "2.0" {
-		return errors.New("invalid jsonrpc version: " + aux.JSONRPC)
-	}
-	r.JSONRPC = aux.JSONRPC
-
-	// Validate that either result or error is present
-	resultExists := len(aux.Result) > 0
-	errorExists := len(aux.Error) > 0
-
-	if !resultExists && !errorExists {
-		return errors.New("response must contain either result or error")
-	}
-	if resultExists && errorExists {
-		return errors.New("response must not contain both result and error")
-	}
-
-	// Parse the ID field
-	r.muID.Lock()
-	r.rawID = aux.ID
-	r.muID.Unlock()
-
-	// Also unmarshal the ID, as the ID field is imperative for use of the Response
-	if err := r.unmarshalID(); err != nil {
-		return fmt.Errorf("failed unmarshalling ID: %w", err)
-	}
-
-	// Assign result or error accordingly
-	if aux.Result != nil {
-		r.muResult.Lock()
-		r.Result = aux.Result
-		r.muResult.Unlock()
-	} else {
-		r.muErr.Lock()
-		r.rawError = aux.Error
-		r.muErr.Unlock()
-	}
-
-	if err := r.Validate(); err != nil {
-		return fmt.Errorf("failed to parse JSON-RPC response: %w", err)
-	}
-
-	return nil
-}
-
 // String returns a string representation of the JSON-RPC response.
 func (r *Response) String() string {
 	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.ID, r.Error, len(r.Result))
 }
 
-// UnmarshalJSON unmarshals the input data into the members of Response. Note that the Result field
-// is stored as raw JSON bytes, and will not be unmarshalled.
+// UnmarshalError unmarshals the raw error into the Error field.
+func (r *Response) UnmarshalError() error {
+	r.muErr.Lock()
+	defer r.muErr.Unlock()
+
+	if r.Error == nil && len(r.rawError) > 0 {
+		r.Error = &Error{}
+		return r.Error.UnmarshalJSON(r.rawError)
+	}
+	return nil
+}
+
+// UnmarshalJSON unmarshals the input data into the members of Response. Note: does not unmarshal
+// the Result field, but leaves that at the caller's discretion (UnmarshalResult). This is an
+// optimization to prevent unnecessary unmarshalling of the Result field for very large blobs.
 func (r *Response) UnmarshalJSON(data []byte) error {
-	err := r.ParseFromBytes(data)
-	if err != nil {
+	// Use the core parsing routine
+	if err := r.parseFromBytes(data); err != nil {
 		return fmt.Errorf("failed to unmarshal JSON-RPC response: %w", err)
 	}
 
-	// Unmarshal the Error field if the Result is empty
+	// If the response carries an error (and no result), decode it eagerly so callers
+	// can inspect *Response.Error without an extra step.
 	r.muResult.RLock()
-	if len(r.Result) == 0 {
-		r.muErr.RLock()
-		r.Error = &Error{}
-		err := r.Error.UnmarshalJSON(r.rawError)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
-		}
-		r.muErr.RUnlock()
-	}
+	resultEmpty := len(r.Result) == 0
 	r.muResult.RUnlock()
 
+	if resultEmpty {
+		r.muErr.Lock()
+		if r.Error == nil && len(r.rawError) > 0 {
+			r.Error = &Error{}
+			if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
+				r.muErr.Unlock()
+				return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
+			}
+		}
+		r.muErr.Unlock()
+	}
+
 	return nil
+}
+
+// UnmarshalResult decodes the raw Result field into the provided destination pointer.
+func (r *Response) UnmarshalResult(dst any) error {
+	if dst == nil {
+		return errors.New("destination pointer cannot be nil")
+	}
+
+	r.muResult.RLock()
+	if len(r.Result) == 0 {
+		r.muResult.RUnlock()
+		return errors.New("response has no result field")
+	}
+	raw := r.Result
+	r.muResult.RUnlock()
+
+	return sonic.Unmarshal(raw, dst)
 }
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
@@ -359,10 +396,38 @@ func (r *Response) Validate() error {
 	return nil
 }
 
+// DecodeResponse parses and returns a new Response from a byte slice.
+func DecodeResponse(data []byte) (*Response, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("empty data")
+	}
+
+	resp := &Response{}
+	if err := resp.parseFromBytes(data); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return resp, nil
+}
+
+// DecodeResponseFromReader parses and returns a new Response from an io.Reader.
+// expectedSize is optional and used for internal buffer sizing; pass 0 if unknown.
+func DecodeResponseFromReader(r io.Reader, expectedSize int) (*Response, error) {
+	if r == nil {
+		return nil, errors.New("cannot read from nil reader")
+	}
+	resp := &Response{}
+	if err := resp.parseFromReader(r, expectedSize); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return resp, nil
+}
+
 // NewResponseFromBytes parses and returns a new Response from a byte slice.
+// TODO: deprecated, use DecodeResponse instead
 func NewResponseFromBytes(data []byte) (*Response, error) {
 	resp := &Response{}
-	err := resp.ParseFromBytes(data)
+	err := resp.parseFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse response from bytes: %w", err)
 	}
@@ -371,6 +436,7 @@ func NewResponseFromBytes(data []byte) (*Response, error) {
 }
 
 // NewResponseFromStream parses and returns a new Response from a stream.
+// TODO: deprecated, use DecodeResponseFromReader instead
 func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")
@@ -378,7 +444,7 @@ func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, err
 	defer body.Close()
 
 	resp := &Response{}
-	err := resp.ParseFromStream(body, expectedSize)
+	err := resp.parseFromReader(body, expectedSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse response from stream: %w", err)
 	}
