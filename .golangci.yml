@@ -1,0 +1,71 @@
+version: "2"
+
+run:
+  timeout: 2m
+  tests: true
+
+linters:
+  # standard includes the 5 linters: errcheck, govet, ineffassign, staticcheck, and unused
+  default: standard
+  enable:
+    - revive
+    - misspell
+  settings:
+    errcheck:
+      # See https://golangci-lint.run/usage/linters/#errcheck for more information.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+    revive:
+      # See https://golangci-lint.run/usage/linters/#revive for more information.
+      max-open-files: 2048
+      severity: error
+      enable-all-rules: true
+      directives:
+        - name: specify-disable-reason
+          severity: error
+      confidence: 0.2
+      rules:
+        - name: add-constant
+          disabled: false
+          exclude: [TEST]
+          arguments:
+            - max-lit-count: "3"
+              allow-strs: '""'
+              allow-ints: "0,1,2,3,4,16,32,64"
+              allow-floats: "0.0,0.,1.0,1.,2.0,2."
+        - name: line-length-limit
+          disabled: false
+          exclude: [""]
+          arguments: [100]
+        - name: function-length
+          disabled: false
+          exclude: [TEST]
+          arguments: [0, 80]
+        - name: cognitive-complexity
+          disabled: false
+          exclude: [""]
+          arguments: [21]
+        - name: cyclomatic
+          disabled: false
+          exclude: [""]
+          arguments: [21]
+        - name: confusing-naming
+          disabled: true
+        - name: unhandled-error
+          disabled: false
+          exclude: [""]
+          arguments:
+            - "^fmt.Fprint"
+            - "^fmt.Fprintf"
+            - "^fmt.Fprintln"
+            - "^fmt.Print"
+            - "^fmt.Printf"
+            - "^fmt.Println"
+    misspell:
+      locale: US
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

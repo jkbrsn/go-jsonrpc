@@ -1,18 +1,18 @@
-// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
-// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (
 	"bytes"
+	// Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
-// isBatchJSON returns true if the trimmed data starts with '[', indicating a batch request/response.
+// isBatchJSON returns true if the trimmed data starts with '[',
+// indicating a batch request/response.
 func isBatchJSON(data []byte) bool {
 	trimmed := bytes.TrimSpace(data)
 	return len(trimmed) > 0 && trimmed[0] == '['
@@ -25,7 +25,7 @@ func isBatchJSON(data []byte) bool {
 // - Empty batches are rejected per JSON-RPC 2.0 spec
 func DecodeRequestOrBatch(data []byte) ([]*Request, bool, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, false, fmt.Errorf("empty data")
+		return nil, false, errors.New(errEmptyData)
 	}
 
 	if isBatchJSON(data) {
@@ -44,7 +44,7 @@ func DecodeRequestOrBatch(data []byte) ([]*Request, bool, error) {
 // Returns (responses, isBatch, error).
 func DecodeResponseOrBatch(data []byte) ([]*Response, bool, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, false, fmt.Errorf("empty data")
+		return nil, false, errors.New(errEmptyData)
 	}
 
 	if isBatchJSON(data) {
@@ -66,7 +66,7 @@ func DecodeResponseOrBatch(data []byte) ([]*Response, bool, error) {
 // - Any element fails to parse as a valid Request
 func DecodeBatchRequest(data []byte) ([]*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, fmt.Errorf("empty data")
+		return nil, errors.New(errEmptyData)
 	}
 
 	// Unmarshal as array of raw messages
@@ -77,7 +77,7 @@ func DecodeBatchRequest(data []byte) ([]*Request, error) {
 
 	// Spec requires non-empty batches
 	if len(rawMessages) == 0 {
-		return nil, fmt.Errorf("batch request must contain at least one request")
+		return nil, errors.New("batch request must contain at least one request")
 	}
 
 	// Parse each request
@@ -99,7 +99,7 @@ func DecodeBatchRequest(data []byte) ([]*Request, error) {
 // - Any request fails validation
 func EncodeBatchRequest(reqs []*Request) ([]byte, error) {
 	if len(reqs) == 0 {
-		return nil, fmt.Errorf("batch request must contain at least one request")
+		return nil, errors.New("batch request must contain at least one request")
 	}
 
 	// Validate all requests first
@@ -120,7 +120,7 @@ func EncodeBatchRequest(reqs []*Request) ([]byte, error) {
 // - Any element fails to parse as a valid Response
 func DecodeBatchResponse(data []byte) ([]*Response, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, fmt.Errorf("empty data")
+		return nil, errors.New(errEmptyData)
 	}
 
 	// Unmarshal as array of raw messages
@@ -130,7 +130,7 @@ func DecodeBatchResponse(data []byte) ([]*Response, error) {
 	}
 
 	if len(rawMessages) == 0 {
-		return nil, fmt.Errorf("batch response must contain at least one response")
+		return nil, errors.New("batch response must contain at least one response")
 	}
 
 	// Parse each response
@@ -152,7 +152,7 @@ func DecodeBatchResponse(data []byte) ([]*Response, error) {
 // - Any response fails validation
 func EncodeBatchResponse(resps []*Response) ([]byte, error) {
 	if len(resps) == 0 {
-		return nil, fmt.Errorf("batch response must contain at least one response")
+		return nil, errors.New("batch response must contain at least one response")
 	}
 
 	// Validate all responses first
@@ -172,7 +172,7 @@ func DecodeBatchRequestFromReader(r io.Reader, expectedSize int) ([]*Request, er
 		return nil, errors.New("cannot read from nil reader")
 	}
 
-	chunkSize := 16 * 1024
+	chunkSize := defaultChunkSize
 	data, err := readAll(r, int64(chunkSize), expectedSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read batch request: %w", err)
@@ -187,7 +187,7 @@ func DecodeBatchResponseFromReader(r io.Reader, expectedSize int) ([]*Response, 
 		return nil, errors.New("cannot read from nil reader")
 	}
 
-	chunkSize := 16 * 1024
+	chunkSize := defaultChunkSize
 	data, err := readAll(r, int64(chunkSize), expectedSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read batch response: %w", err)
@@ -200,10 +200,10 @@ func DecodeBatchResponseFromReader(r io.Reader, expectedSize int) ([]*Response, 
 // Each request receives an auto-generated ID.
 func NewBatchRequest(methods []string, params []any) ([]*Request, error) {
 	if len(methods) == 0 {
-		return nil, fmt.Errorf("batch must contain at least one method")
+		return nil, errors.New("batch must contain at least one method")
 	}
 	if len(params) > 0 && len(params) != len(methods) {
-		return nil, fmt.Errorf("params length must match methods length or be empty")
+		return nil, errors.New("params length must match methods length or be empty")
 	}
 
 	requests := make([]*Request, len(methods))
@@ -221,10 +221,10 @@ func NewBatchRequest(methods []string, params []any) ([]*Request, error) {
 // NewBatchNotification creates a batch of notifications (requests without IDs).
 func NewBatchNotification(methods []string, params []any) ([]*Request, error) {
 	if len(methods) == 0 {
-		return nil, fmt.Errorf("batch must contain at least one method")
+		return nil, errors.New("batch must contain at least one method")
 	}
 	if len(params) > 0 && len(params) != len(methods) {
-		return nil, fmt.Errorf("params length must match methods length or be empty")
+		return nil, errors.New("params length must match methods length or be empty")
 	}
 
 	requests := make([]*Request, len(methods))

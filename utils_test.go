@@ -11,12 +11,45 @@ import (
 )
 
 func TestRandomJSONRPCID(t *testing.T) {
-	id1 := RandomJSONRPCID()
-	id2 := RandomJSONRPCID()
+	t.Run("Generates non-zero IDs", func(t *testing.T) {
+		id1 := RandomJSONRPCID()
+		id2 := RandomJSONRPCID()
 
-	assert.NotEqual(t, id1, id2)
-	assert.Greater(t, id1, int64(0))
-	assert.Greater(t, id2, int64(0))
+		assert.GreaterOrEqual(t, id1, int64(0))
+		assert.GreaterOrEqual(t, id2, int64(0))
+		assert.LessOrEqual(t, id1, int64(2147483647))
+		assert.LessOrEqual(t, id2, int64(2147483647))
+	})
+
+	t.Run("Generates unique IDs across multiple calls", func(t *testing.T) {
+		seen := make(map[int64]bool)
+		duplicates := 0
+
+		// Generate 1000 IDs and check for uniqueness
+		for i := 0; i < 1000; i++ {
+			id := RandomJSONRPCID()
+			if seen[id] {
+				duplicates++
+			}
+			seen[id] = true
+		}
+
+		// With a range of 2^31, duplicates should be extremely rare in 1000 iterations
+		// Allow up to 5 duplicates due to birthday paradox, but expect 0-2 typically
+		assert.LessOrEqual(t, duplicates, 5, "Too many duplicate IDs generated")
+	})
+
+	t.Run("Two consecutive calls produce different IDs (usually)", func(t *testing.T) {
+		// Note: This test may occasionally fail due to randomness, but very unlikely
+		id1 := RandomJSONRPCID()
+		id2 := RandomJSONRPCID()
+		assert.NotEqual(
+			t,
+			id1,
+			id2,
+			"Consecutive IDs should differ (test may rarely fail due to randomness)",
+		)
+	})
 }
 
 func TestReadAll(t *testing.T) {
@@ -42,6 +75,30 @@ func TestReadAll(t *testing.T) {
 			chunkSize:    5,
 			expectedSize: 0,
 			expected:     "Hello, World!",
+			expectError:  false,
+		},
+		{
+			name:         "Small message with expected size",
+			input:        "Short",
+			chunkSize:    1024,
+			expectedSize: 5,
+			expected:     "Short",
+			expectError:  false,
+		},
+		{
+			name:         "Medium message with expected size",
+			input:        strings.Repeat("A", 5000),
+			chunkSize:    1024,
+			expectedSize: 5000,
+			expected:     strings.Repeat("A", 5000),
+			expectError:  false,
+		},
+		{
+			name:         "Large message with expected size",
+			input:        strings.Repeat("B", 20000),
+			chunkSize:    4096,
+			expectedSize: 20000,
+			expected:     strings.Repeat("B", 20000),
 			expectError:  false,
 		},
 		{

@@ -48,8 +48,8 @@ if err != nil {
 }
 
 // Check for JSON-RPC error
-if resp.Error != nil {
-    fmt.Printf("RPC Error: %s\n", resp.Error.Message)
+if resp.Err() != nil {
+    fmt.Printf("RPC Error: %s\n", resp.Err().Message)
     return
 }
 
@@ -69,6 +69,48 @@ notification := jsonrpc.NewNotification("log", map[string]any{
     "level": "info",
     "message": "Operation completed",
 })
+```
+
+### Working with Params
+
+The library supports both positional (array) and named (object) parameters, as well as structured parameter unmarshaling.
+
+#### Positional Parameters
+
+```go
+// Create a request with array parameters
+req := jsonrpc.NewRequest("subtract", []any{42, 23})
+// Params: [42, 23]
+```
+
+#### Named Parameters
+
+```go
+// Create a request with object parameters
+req := jsonrpc.NewRequest("updateUser", map[string]any{
+    "userId": 123,
+    "name":   "Alice",
+    "active": true,
+})
+// Params: {"userId": 123, "name": "Alice", "active": true}
+```
+
+#### Unmarshaling Params into Structs
+
+```go
+// Define your parameter structure
+type UserParams struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+    Age   int    `json:"age"`
+}
+
+// Unmarshal params into the struct
+var params UserParams
+if err := req.UnmarshalParams(&params); err != nil {
+    // Handle error
+}
+// Use params.Name, params.Email, params.Age
 ```
 
 ### Batch Requests and Responses
@@ -96,7 +138,7 @@ reqs, err := jsonrpc.NewBatchRequest(
 ```go
 resps, err := jsonrpc.DecodeBatchResponse(data)
 for _, resp := range resps {
-    if resp.Error != nil {
+    if resp.Err() != nil {
         // Handle error
     } else {
         var result int
@@ -126,6 +168,20 @@ reqs, err := jsonrpc.NewBatchNotification(
     []any{map[string]any{"level": "info"}, map[string]any{"message": "test"}},
 )
 ```
+
+## Migration Guide
+
+If you're upgrading from earlier versions, some function names have changed to follow Go conventions more closely. See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
+
+**Quick reference:**
+- `RequestFromBytes` → `DecodeRequest`
+- `NewResponseFromBytes` → `DecodeResponse`
+- `NewResponseFromStream` → `DecodeResponseFromReader` (note: does not auto-close reader)
+- `resp.IDRaw()` → `resp.IDOrNil()`
+- `resp.Error` → `resp.Err()` (field is now unexported)
+- `resp.Result` → `resp.RawResult()` (field is now unexported)
+- `resp.JSONRPC` → `resp.Version()` (field is now unexported)
+- `resp.ID` → `resp.IDOrNil()` (field is now unexported)
 
 ## Contributing
 

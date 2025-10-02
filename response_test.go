@@ -18,10 +18,10 @@ import (
 // errReader is a simple io.Reader that always returns an error
 type errReadCloser string
 
-func (e errReadCloser) Read(p []byte) (n int, err error) {
+func (e errReadCloser) Read(_ []byte) (n int, err error) {
 	return 0, fmt.Errorf("%s", string(e))
 }
-func (e errReadCloser) Close() error {
+func (errReadCloser) Close() error {
 	return nil
 }
 
@@ -30,7 +30,7 @@ type readCloser struct {
 	*bytes.Reader
 }
 
-func (rc *readCloser) Close() error {
+func (*readCloser) Close() error {
 	return nil
 }
 
@@ -61,62 +61,80 @@ func TestResponse_Equals(t *testing.T) {
 		},
 		{
 			name:      "Differen jsonrpc",
-			this:      &Response{JSONRPC: "2.0"},
-			other:     &Response{JSONRPC: "1.0"},
+			this:      &Response{jsonrpc: "2.0"},
+			other:     &Response{jsonrpc: "1.0"},
 			assertion: false,
 		},
 		{
-			name:      "Different ID:s",
-			this:      &Response{ID: "id1"},
-			other:     &Response{ID: "id2"},
+			name:      "Different id: s",
+			this:      &Response{id: "id1"},
+			other:     &Response{id: "id2"},
 			assertion: false,
 		},
 		{
 			name:      "Different ID types",
-			this:      &Response{ID: "some-id"},
-			other:     &Response{ID: 24},
+			this:      &Response{id: "some-id"},
+			other:     &Response{id: 24},
 			assertion: false,
 		},
 		{
 			name:      "Different errors",
-			this:      &Response{Error: &Error{Code: 123, Message: "error1"}},
-			other:     &Response{Error: &Error{Code: 456, Message: "error2"}},
+			this:      &Response{err: &Error{Code: 123, Message: "error1"}},
+			other:     &Response{err: &Error{Code: 456, Message: "error2"}},
 			assertion: false,
 		},
 		{
 			name:      "Same errors",
-			this:      &Response{Error: &Error{Code: 234, Message: "error3"}},
-			other:     &Response{Error: &Error{Code: 234, Message: "error3"}},
+			this:      &Response{err: &Error{Code: 234, Message: "error3"}},
+			other:     &Response{err: &Error{Code: 234, Message: "error3"}},
 			assertion: true,
 		},
 		{
 			name:      "Different results",
-			this:      &Response{Result: []byte(`"result1"`)},
-			other:     &Response{Result: []byte(`"result2"`)},
+			this:      &Response{result: []byte(`"result1"`)},
+			other:     &Response{result: []byte(`"result2"`)},
 			assertion: false,
 		},
 		{
 			name:      "Same results",
-			this:      &Response{Result: []byte(`"result3"`)},
-			other:     &Response{Result: []byte(`"result3"`)},
+			this:      &Response{result: []byte(`"result3"`)},
+			other:     &Response{result: []byte(`"result3"`)},
 			assertion: true,
 		},
 		{
-			name:      "Different errors, same results",
-			this:      &Response{Error: &Error{Code: 123, Message: "error"}, Result: []byte(`"result"`)},
-			other:     &Response{Error: &Error{Code: 456, Message: "error"}, Result: []byte(`"result"`)},
+			name: "Different errors, same results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 456, Message: "error"},
+				result: []byte(`"result"`),
+			},
 			assertion: false,
 		},
 		{
-			name:      "Same errors, different results",
-			this:      &Response{Error: &Error{Code: 123, Message: "error"}, Result: []byte(`"result1"`)},
-			other:     &Response{Error: &Error{Code: 123, Message: "error"}, Result: []byte(`"result2"`)},
+			name: "Same errors, different results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result1"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result2"`),
+			},
 			assertion: false,
 		},
 		{
-			name:      "Same errors and results",
-			this:      &Response{Error: &Error{Code: 123, Message: "error"}, Result: []byte(`"result"`)},
-			other:     &Response{Error: &Error{Code: 123, Message: "error"}, Result: []byte(`"result"`)},
+			name: "Same errors and results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
 			assertion: true,
 		},
 	}
@@ -129,6 +147,100 @@ func TestResponse_Equals(t *testing.T) {
 	}
 }
 
+// TestResponse_EqualsMixedLazyEager tests comparison between
+// eagerly and lazily unmarshaled responses
+func TestResponse_EqualsMixedLazyEager(t *testing.T) {
+	t.Run("Mixed ID - eager vs lazy with same ID", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":42,"result":"success"}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with raw ID still unparsed
+		lazy := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`42`),
+			result:  json.RawMessage(`"success"`),
+		}
+
+		// They should be equal even though one has ID unmarshaled and other doesn't
+		assert.True(t, eager.Equals(lazy))
+		assert.True(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed ID - eager vs lazy with different ID", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":42,"result":"success"}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with different raw ID
+		lazy := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`99`),
+			result:  json.RawMessage(`"success"`),
+		}
+
+		// They should NOT be equal
+		assert.False(t, eager.Equals(lazy))
+		assert.False(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed Error - eager vs lazy with same error", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager error unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with raw error still unparsed
+		lazy := &Response{
+			jsonrpc:  "2.0",
+			rawID:    json.RawMessage(`1`),
+			rawError: json.RawMessage(`{"code":-32000,"message":"test error"}`),
+		}
+
+		// They should be equal even though one has Error unmarshaled and other doesn't
+		assert.True(t, eager.Equals(lazy))
+		assert.True(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed Error - eager vs lazy with different error", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager error unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with different raw error
+		lazy := &Response{
+			jsonrpc:  "2.0",
+			rawID:    json.RawMessage(`1`),
+			rawError: json.RawMessage(`{"code":-32001,"message":"different error"}`),
+		}
+
+		// They should NOT be equal
+		assert.False(t, eager.Equals(lazy))
+		assert.False(t, lazy.Equals(eager))
+	})
+
+	t.Run("Both lazy - same values", func(t *testing.T) {
+		lazy1 := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`"test-id"`),
+			result:  json.RawMessage(`"result"`),
+		}
+
+		lazy2 := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`"test-id"`),
+			result:  json.RawMessage(`"result"`),
+		}
+
+		// Both lazy, same semantic values
+		assert.True(t, lazy1.Equals(lazy2))
+		assert.True(t, lazy2.Equals(lazy1))
+	})
+}
+
 func TestResponse_IDString(t *testing.T) {
 	t.Run("No ID set => returns empty string", func(t *testing.T) {
 		resp := &Response{}
@@ -136,60 +248,82 @@ func TestResponse_IDString(t *testing.T) {
 	})
 
 	t.Run("ID is string text", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = "my-unique-id"
+		resp := &Response{id: "my-unique-id"}
 		assert.Equal(t, "my-unique-id", resp.IDString())
 	})
 
 	t.Run("ID is string integer", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = "15"
+		resp := &Response{id: "15"}
 		assert.Equal(t, "15", resp.IDString())
 	})
 
 	t.Run("ID is string float", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = "33.75"
+		resp := &Response{id: "33.75"}
 		assert.Equal(t, "33.75", resp.IDString())
 	})
 
 	t.Run("ID is int64", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = int64(12345)
+		resp := &Response{id: int64(12345)}
 		assert.Equal(t, "12345", resp.IDString())
 	})
 
 	t.Run("ID is float64", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = float64(12345.67)
+		resp := &Response{id: float64(12345.67)}
 		assert.Equal(t, "12345.67", resp.IDString())
 	})
 
 	t.Run("ID is float64 integer value", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = float64(25.0)
+		resp := &Response{id: float64(25.0)}
 		assert.Equal(t, "25.0", resp.IDString())
 	})
 
 	t.Run("ID is other type => returns empty string", func(t *testing.T) {
-		resp := &Response{}
-		resp.ID = []int{1, 2, 3}
+		resp := &Response{id: []int{1, 2, 3}}
 		assert.Equal(t, "", resp.IDString())
 	})
 }
 
 func TestResponse_IsEmpty(t *testing.T) {
 	t.Run("Results considered empty", func(t *testing.T) {
-		cases := [][]byte{
-			[]byte(`"0x"`),
-			[]byte(`null`),
-			[]byte(`""`),
-			[]byte(`[]`),
-			[]byte(`{}`),
+		cases := []struct {
+			name   string
+			result []byte
+		}{
+			{name: "hex zero", result: []byte(`"0x"`)},
+			{name: "null", result: []byte(`null`)},
+			{name: "empty string", result: []byte(`""`)},
+			{name: "empty array", result: []byte(`[]`)},
+			{name: "empty object", result: []byte(`{}`)},
+			{name: "empty byte slice", result: []byte{}},
 		}
 		for _, c := range cases {
-			resp := &Response{Result: c}
-			assert.True(t, resp.IsEmpty(), "expected %q to be IsEmpty == true", c)
+			t.Run(c.name, func(t *testing.T) {
+				resp := &Response{result: c.result}
+				assert.True(t, resp.IsEmpty(), "expected %q to be IsEmpty == true", c.result)
+			})
+		}
+	})
+
+	t.Run("Results NOT considered empty", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			result []byte
+		}{
+			{name: "non-zero hex", result: []byte(`"0x1"`)},
+			{name: "number", result: []byte(`42`)},
+			{name: "non-empty string", result: []byte(`"hello"`)},
+			{name: "array with elements", result: []byte(`[1,2,3]`)},
+			{name: "object with fields", result: []byte(`{"key":"value"}`)},
+			{name: "boolean true", result: []byte(`true`)},
+			{name: "boolean false", result: []byte(`false`)},
+			{name: "zero number", result: []byte(`0`)},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				// With non-empty result and empty error, should NOT be empty
+				resp := &Response{result: c.result}
+				assert.False(t, resp.IsEmpty(), "expected %q to be IsEmpty == false", c.result)
+			})
 		}
 	})
 
@@ -208,19 +342,19 @@ func TestResponse_IsEmpty(t *testing.T) {
 			},
 			{
 				name: "Result is empty",
-				resp: &Response{Result: []byte{}},
+				resp: &Response{result: []byte{}},
 			},
 			{
 				name: "Error is empty",
-				resp: &Response{Error: &Error{}},
+				resp: &Response{err: &Error{}},
 			},
 			{
 				name: "Result and Error are empty",
-				resp: &Response{Result: []byte{}, Error: &Error{}},
+				resp: &Response{result: []byte{}, err: &Error{}},
 			},
 			{
 				name: "Error without Code or Message",
-				resp: &Response{Error: &Error{Data: "some data"}},
+				resp: &Response{err: &Error{Data: "some data"}},
 			},
 		}
 
@@ -238,15 +372,18 @@ func TestResponse_IsEmpty(t *testing.T) {
 		}{
 			{
 				name: "Result only",
-				resp: &Response{Result: []byte(`"some-value"`)},
+				resp: &Response{result: []byte(`"some-value"`)},
 			},
 			{
 				name: "Error only",
-				resp: &Response{Error: &Error{Code: 123, Message: "some error"}},
+				resp: &Response{err: &Error{Code: 123, Message: "some error"}},
 			},
 			{
 				name: "Result and error",
-				resp: &Response{Result: []byte(`"some-value"`), Error: &Error{Code: 123, Message: "some error"}},
+				resp: &Response{
+					result: []byte(`"some-value"`),
+					err:    &Error{Code: 123, Message: "some error"},
+				},
 			},
 		}
 
@@ -267,26 +404,42 @@ func TestResponse_MarshalJSON(t *testing.T) {
 	}{
 		{
 			name: "Response with result",
-			resp: &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      int64(1),
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			json: []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 		},
 		{
 			name: "Response with Error",
-			resp: &Response{JSONRPC: "2.0", ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
-			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
+			json: []byte(
+				`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`,
+			),
 		},
 		{
 			name: "Response with rawError and nil ID",
-			resp: &Response{JSONRPC: "2.0", ID: nil, rawError: []byte(`{"code":123,"message":"test msg"}`)},
-			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
+			resp: &Response{
+				jsonrpc:  "2.0",
+				id:       nil,
+				rawError: []byte(`{"code":123,"message":"test msg"}`),
+			},
+			json: []byte(
+				`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`,
+			),
 		},
 		{
 			name: "Invalid: both result and error",
 			resp: &Response{
-				JSONRPC: "2.0",
-				ID:      "first",
-				Result:  []byte(`{"foo":"bar"}`),
-				Error:   &Error{Code: 123, Message: "test msg"},
+				jsonrpc: "2.0",
+				id:      "first",
+				result:  []byte(`{"foo":"bar"}`),
+				err:     &Error{Code: 123, Message: "test msg"},
 			},
 			runtimeErr: true,
 		},
@@ -294,13 +447,13 @@ func TestResponse_MarshalJSON(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			marshalled, err := tc.resp.MarshalJSON()
+			marshaled, err := tc.resp.MarshalJSON()
 			if tc.runtimeErr {
 				assert.Error(t, err)
-				assert.Nil(t, marshalled)
+				assert.Nil(t, marshaled)
 			} else {
 				assert.NoError(t, err)
-				assert.JSONEq(t, string(tc.json), string(marshalled))
+				assert.JSONEq(t, string(tc.json), string(marshaled))
 			}
 		})
 	}
@@ -329,12 +482,12 @@ func TestResponse_parseFromReader(t *testing.T) {
 		err := resp.parseFromReader(bytes.NewReader(raw), len(raw))
 		require.NoError(t, err)
 		assert.Nil(t, resp.rawError)
-		assert.Nil(t, resp.Error)
-		assert.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Err())
+		assert.NotNil(t, resp.RawResult())
 
 		// Unmarshal the result to check if it's correct
 		var resultStr string
-		err = json.Unmarshal(resp.Result, &resultStr)
+		err = json.Unmarshal(resp.RawResult(), &resultStr)
 		require.NoError(t, err)
 		assert.Equal(t, "OK", resultStr)
 	})
@@ -345,7 +498,7 @@ func TestResponse_parseFromReader(t *testing.T) {
 		err := resp.parseFromReader(bytes.NewReader(raw), len(raw))
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawError)
-		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.RawResult())
 	})
 
 	t.Run("Invalid JSON", func(t *testing.T) {
@@ -355,8 +508,8 @@ func TestResponse_parseFromReader(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "{invalid-json")
 		assert.Nil(t, resp.rawError)
-		assert.Nil(t, resp.Error)
-		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.Err())
+		assert.Nil(t, resp.RawResult())
 	})
 
 	t.Run("Large JSON to test chunked reading", func(t *testing.T) {
@@ -370,12 +523,12 @@ func TestResponse_parseFromReader(t *testing.T) {
 		err := resp.parseFromReader(bytes.NewReader(raw), len(raw))
 		require.NoError(t, err)
 		assert.Nil(t, resp.rawError)
-		assert.Nil(t, resp.Error)
-		require.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Err())
+		require.NotNil(t, resp.RawResult())
 
 		// Unmarshal the result to check if it's correct
 		var resultStr string
-		err = json.Unmarshal(resp.Result, &resultStr)
+		err = json.Unmarshal(resp.RawResult(), &resultStr)
 		require.NoError(t, err)
 		assert.Equal(t, string(largeBytes), resultStr)
 	})
@@ -388,8 +541,8 @@ func TestResponse_parseFromBytes(t *testing.T) {
 		err := resp.parseFromBytes(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawID)
-		assert.NotNil(t, resp.Result)
-		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.RawResult())
+		assert.Nil(t, resp.Err())
 		assert.Nil(t, resp.rawError)
 	})
 
@@ -399,8 +552,10 @@ func TestResponse_parseFromBytes(t *testing.T) {
 		err := resp.parseFromBytes(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawID)
-		assert.Nil(t, resp.Result)
-		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.RawResult())
+		// Err() triggers lazy unmarshaling, so it should return the error
+		assert.NotNil(t, resp.Err())
+		assert.Equal(t, -32000, resp.Err().Code)
 		assert.NotNil(t, resp.rawError)
 	})
 
@@ -410,8 +565,8 @@ func TestResponse_parseFromBytes(t *testing.T) {
 		err := resp.parseFromBytes(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawID)
-		assert.NotNil(t, resp.Result)
-		assert.Nil(t, resp.Error)
+		assert.NotNil(t, resp.RawResult())
+		assert.Nil(t, resp.Err())
 		assert.Nil(t, resp.rawError)
 	})
 
@@ -422,8 +577,8 @@ func TestResponse_parseFromBytes(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "response must not contain both result and error")
 		assert.Nil(t, resp.rawID)
-		assert.Nil(t, resp.Result)
-		assert.Nil(t, resp.Error)
+		assert.Nil(t, resp.RawResult())
+		assert.Nil(t, resp.Err())
 		assert.Nil(t, resp.rawError)
 	})
 
@@ -442,8 +597,8 @@ func TestResponse_parseFromBytes(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, resp.rawID)
 			assert.Nil(t, resp.rawError)
-			assert.Nil(t, resp.Error)
-			assert.Nil(t, resp.Result)
+			assert.Nil(t, resp.Err())
+			assert.Nil(t, resp.RawResult())
 		}
 	})
 }
@@ -466,8 +621,10 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			respRes:    []byte(`{"foo":"bar"}`),
 		},
 		{
-			name:       "Has id and correctly formed error 1",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":"abc","error":{"code":-123,"message":"some msg"}}`),
+			name: "Has id and correctly formed error 1",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":"abc","error":{"code":-123,"message":"some msg"}}`,
+			),
 			runtimeErr: false,
 			respErr: &Error{
 				Code:    -123,
@@ -476,8 +633,10 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			respID: "abc",
 		},
 		{
-			name:       "Has id and correctly formed error 2",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":5,"error":{"code":-1234,"data":"some data"}}`),
+			name: "Has id and correctly formed error 2",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":5,"error":{"code":-1234,"data":"some data"}}`,
+			),
 			runtimeErr: false,
 			respErr: &Error{
 				Code: -1234,
@@ -512,8 +671,11 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			errMessage: "response must contain either result or error",
 		},
 		{
-			name:       "Both error and result",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-123,"message":"some msg"},"result":{"foo":"bar"}}`),
+			name: "Both error and result",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":2,` +
+					`"error":{"code":-123,"message":"some msg"},"result":{"foo":"bar"}}`,
+			),
 			runtimeErr: true,
 			errMessage: "response must not contain both result and error",
 		},
@@ -553,9 +715,9 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, resp)
-				assert.Equal(t, c.respErr, resp.Error)
-				assert.Equal(t, c.respID, resp.ID)
-				assert.Equal(t, c.respRes, resp.Result)
+				assert.Equal(t, c.respErr, resp.Err())
+				assert.Equal(t, c.respID, resp.IDOrNil())
+				assert.Equal(t, c.respRes, resp.RawResult())
 			}
 		})
 	}
@@ -569,36 +731,53 @@ func TestResponse_Validate(t *testing.T) {
 		errMessage string
 	}{
 		{
-			name:       "Valid response with result",
-			resp:       &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			name: "Valid response with result",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      int64(1),
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			runtimeErr: false,
 		},
 		{
-			name:       "Valid response with error",
-			resp:       &Response{JSONRPC: "2.0", ID: "first", Error: &Error{Code: 123, Message: "test msg"}},
+			name: "Valid response with error",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
 			runtimeErr: false,
 		},
 		{
 			name:       "Invalid JSON-RPC version",
-			resp:       &Response{JSONRPC: "1.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)},
+			resp:       &Response{jsonrpc: "1.0", id: int64(1), result: []byte(`{"foo":"bar"}`)},
 			runtimeErr: true,
 			errMessage: "invalid jsonrpc version",
 		},
 		{
-			name:       "Invalid ID type",
-			resp:       &Response{JSONRPC: "2.0", ID: []int{1, 2, 3}, Result: []byte(`{"foo":"bar"}`)},
+			name: "Invalid ID type",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      []int{1, 2, 3},
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			runtimeErr: true,
 			errMessage: "id field must be a string or a number",
 		},
 		{
-			name:       "Both result and error",
-			resp:       &Response{JSONRPC: "2.0", ID: "first", Result: []byte(`{"foo":"bar"}`), Error: &Error{Code: 123, Message: "test msg"}},
+			name: "Both result and error",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				result:  []byte(`{"foo":"bar"}`),
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
 			runtimeErr: true,
 			errMessage: "response must not contain both result and error",
 		},
 		{
 			name:       "Neither result nor error",
-			resp:       &Response{JSONRPC: "2.0", ID: "first"},
+			resp:       &Response{jsonrpc: "2.0", id: "first"},
 			runtimeErr: true,
 			errMessage: "response must contain either result or error",
 		},
@@ -635,12 +814,12 @@ func TestDecodeResponse(t *testing.T) {
 		resp, err := DecodeResponse(raw)
 		require.NoError(t, err)
 		assert.Nil(t, resp.rawError)
-		assert.Nil(t, resp.Error)
-		assert.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Err())
+		assert.NotNil(t, resp.RawResult())
 
 		// Unmarshal the result to check if it's correct
 		var resultStr string
-		err = json.Unmarshal(resp.Result, &resultStr)
+		err = json.Unmarshal(resp.RawResult(), &resultStr)
 		require.NoError(t, err)
 		assert.Equal(t, "OK", resultStr)
 	})
@@ -650,7 +829,7 @@ func TestDecodeResponse(t *testing.T) {
 		resp, err := DecodeResponse(raw)
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawError)
-		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.RawResult())
 	})
 
 	t.Run("Invalid JSON", func(t *testing.T) {
@@ -683,8 +862,8 @@ func TestDecodeResponseFromReader(t *testing.T) {
 		resp, err := DecodeResponseFromReader(&readCloser{bytes.NewReader(raw)}, len(raw))
 		require.NoError(t, err)
 		assert.Nil(t, resp.rawError)
-		assert.Nil(t, resp.Error)
-		assert.NotNil(t, resp.Result)
+		assert.Nil(t, resp.Err())
+		assert.NotNil(t, resp.RawResult())
 	})
 
 	t.Run("Valid JSON with error", func(t *testing.T) {
@@ -692,7 +871,7 @@ func TestDecodeResponseFromReader(t *testing.T) {
 		resp, err := DecodeResponseFromReader(&readCloser{bytes.NewReader(raw)}, len(raw))
 		require.NoError(t, err)
 		assert.NotNil(t, resp.rawError)
-		assert.Nil(t, resp.Result)
+		assert.Nil(t, resp.RawResult())
 	})
 
 	t.Run("Invalid JSON", func(t *testing.T) {
@@ -708,7 +887,7 @@ func TestDecodeResponseFromReader(t *testing.T) {
 // Responses are immutable after decode, so concurrent access should never race.
 func TestResponse_Concurrency(t *testing.T) {
 	t.Run("Concurrent IDString", func(t *testing.T) {
-		resp := &Response{ID: int64(12345)}
+		resp := &Response{id: int64(12345)}
 
 		var wg sync.WaitGroup
 		for range 200 {
@@ -723,7 +902,7 @@ func TestResponse_Concurrency(t *testing.T) {
 	})
 
 	t.Run("Concurrent IsEmpty", func(t *testing.T) {
-		resp := &Response{Result: []byte(`"0x"`)}
+		resp := &Response{result: []byte(`"0x"`)}
 
 		var wg sync.WaitGroup
 		for range 200 {
@@ -738,8 +917,8 @@ func TestResponse_Concurrency(t *testing.T) {
 	})
 
 	t.Run("Concurrent Equals", func(t *testing.T) {
-		resp1 := &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)}
-		resp2 := &Response{JSONRPC: "2.0", ID: int64(1), Result: []byte(`{"foo":"bar"}`)}
+		resp1 := &Response{jsonrpc: "2.0", id: int64(1), result: []byte(`{"foo":"bar"}`)}
+		resp2 := &Response{jsonrpc: "2.0", id: int64(1), result: []byte(`{"foo":"bar"}`)}
 
 		var wg sync.WaitGroup
 		for range 200 {
@@ -751,6 +930,29 @@ func TestResponse_Concurrency(t *testing.T) {
 			}()
 		}
 		wg.Wait()
+	})
+}
+
+func TestResponse_Constructors(t *testing.T) {
+	t.Run("NewResponse", func(t *testing.T) {
+		resp, err := NewResponse("id", "result")
+		require.NoError(t, err)
+		assert.Equal(t, "id", resp.IDString())
+		assert.Equal(t, `"result"`, string(resp.RawResult()))
+	})
+
+	t.Run("NewErrorResponse", func(t *testing.T) {
+		resp := NewErrorResponse("id", &Error{Code: -32000, Message: "error"})
+		assert.Equal(t, "id", resp.IDString())
+		assert.Equal(t, -32000, resp.Err().Code)
+		assert.Equal(t, "error", resp.Err().Message)
+	})
+
+	t.Run("NewResponseFromRaw", func(t *testing.T) {
+		resp, err := NewResponseFromRaw("id", []byte(`"result"`))
+		require.NoError(t, err)
+		assert.Equal(t, "id", resp.IDString())
+		assert.Equal(t, `"result"`, string(resp.RawResult()))
 	})
 }
 
@@ -787,18 +989,15 @@ func TestResponse_UnmarshalError(t *testing.T) {
 	resp, err := DecodeResponse(raw)
 	require.NoError(t, err)
 
-	// Error should still be nil until explicitly decoded.
-	assert.Nil(t, resp.Error)
+	// Error responses are eagerly unmarshaled during DecodeResponse for convenience
+	require.NotNil(t, resp.Err())
+	assert.Equal(t, -32000, resp.Err().Code)
+	assert.Equal(t, "oops", resp.Err().Message)
 
+	// Calling UnmarshalError again should be idempotent and still succeed.
 	err = resp.UnmarshalError()
 	require.NoError(t, err)
-	require.NotNil(t, resp.Error)
-	assert.Equal(t, -32000, resp.Error.Code)
-	assert.Equal(t, "oops", resp.Error.Message)
-
-	// Calling again should be idempotent and still succeed.
-	err = resp.UnmarshalError()
-	require.NoError(t, err)
+	assert.Equal(t, -32000, resp.Err().Code)
 }
 
 // TestResponse_Immutability verifies that Response fields don't change after decode.
@@ -809,8 +1008,8 @@ func TestResponse_Immutability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Capture initial state
-	originalID := resp.ID
-	originalResult := string(resp.Result)
+	originalID := resp.IDOrNil()
+	originalResult := string(resp.RawResult())
 
 	// Access ID multiple times (triggers lazy unmarshal on first call)
 	id1 := resp.IDOrNil()
@@ -823,7 +1022,7 @@ func TestResponse_Immutability(t *testing.T) {
 	assert.Equal(t, originalID, id1)
 
 	// Result should never change
-	assert.Equal(t, originalResult, string(resp.Result))
+	assert.Equal(t, originalResult, string(resp.RawResult()))
 
 	// Concurrent reads should see consistent state
 	var wg sync.WaitGroup
@@ -832,7 +1031,7 @@ func TestResponse_Immutability(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			assert.Equal(t, originalID, resp.IDOrNil())
-			assert.Equal(t, originalResult, string(resp.Result))
+			assert.Equal(t, originalResult, string(resp.RawResult()))
 		}()
 	}
 	wg.Wait()

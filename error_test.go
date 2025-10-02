@@ -83,6 +83,16 @@ func TestError_IsEmpty(t *testing.T) {
 		e := &Error{Data: "some data"}
 		assert.True(t, e.IsEmpty())
 	})
+
+	t.Run("Zero code with message is not empty", func(t *testing.T) {
+		e := &Error{Code: 0, Message: "some error"}
+		assert.False(t, e.IsEmpty(), "zero code with message should not be empty")
+	})
+
+	t.Run("Zero code without message is empty", func(t *testing.T) {
+		e := &Error{Code: 0, Message: ""}
+		assert.True(t, e.IsEmpty(), "zero code without message should be empty")
+	})
 }
 
 func TestError_UnmarshalJSON(t *testing.T) {
@@ -181,5 +191,19 @@ func TestError_Validate(t *testing.T) {
 		err := e.Validate()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "either a non-zero code or a message")
+	})
+
+	t.Run("Zero code with message is valid", func(t *testing.T) {
+		e := &Error{Code: 0, Message: "some error"}
+		err := e.Validate()
+		require.NoError(t, err,
+			"zero codes are allowed per JSON-RPC 2.0 spec when message is present")
+	})
+
+	t.Run("Nil error", func(t *testing.T) {
+		var e *Error
+		err := e.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "nil")
 	})
 }

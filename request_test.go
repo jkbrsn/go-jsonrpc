@@ -71,13 +71,15 @@ func TestRequest_MarshalJSON(t *testing.T) {
 			expected string
 		}{
 			{
-				name:     "With int ID",
-				req:      &Request{JSONRPC: "2.0", Method: "testMethod", Params: []any{"0x123"}, ID: int64(99)},
+				name: "With int ID",
+				req: &Request{JSONRPC: "2.0", Method: "testMethod",
+					Params: []any{"0x123"}, ID: int64(99)},
 				expected: `{"jsonrpc":"2.0","id":99,"method":"testMethod","params":["0x123"]}`,
 			},
 			{
-				name:     "With string ID",
-				req:      &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: []any{}, ID: "abc"},
+				name: "With string ID",
+				req: &Request{JSONRPC: "2.0", Method: "eth_getBalance",
+					Params: []any{}, ID: "abc"},
 				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":[]}`,
 			},
 			{
@@ -86,14 +88,17 @@ func TestRequest_MarshalJSON(t *testing.T) {
 				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId"}`,
 			},
 			{
-				name:     "With empty Params array",
-				req:      &Request{JSONRPC: "2.0", Method: "eth_chainId", Params: []any{}, ID: "abc"},
+				name: "With empty Params array",
+				req: &Request{JSONRPC: "2.0", Method: "eth_chainId",
+					Params: []any{}, ID: "abc"},
 				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_chainId","params":[]}`,
 			},
 			{
-				name:     "With object Params",
-				req:      &Request{JSONRPC: "2.0", Method: "eth_getBalance", Params: map[string]any{"address": "0x123"}, ID: "abc"},
-				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance","params":{"address":"0x123"}}`,
+				name: "With object Params",
+				req: &Request{JSONRPC: "2.0", Method: "eth_getBalance",
+					Params: map[string]any{"address": "0x123"}, ID: "abc"},
+				expected: `{"jsonrpc":"2.0","id":"abc","method":"eth_getBalance",` +
+					`"params":{"address":"0x123"}}`,
 			},
 		}
 
@@ -248,25 +253,44 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 
 	t.Run("Invalid JSONRPC => error", func(t *testing.T) {
 		invalidJSONs := [][]byte{
-			[]byte(`{"json":"2.0","id":1,"method":"eth_chainId"`),                            // Invalid JSONRPC field
-			[]byte(`{"jsonrpc":"2.0","id":,"method":"eth_chainId"}`),                         // Invalid ID: missing value
-			[]byte(`{"jsonrpc":"2.0","id":true,"method":"eth_chainId"}`),                     // Invalid ID: boolean
-			[]byte(`{"jsonrpc":"2.0","id":{},"method":"eth_chainId"}`),                       // Invalid ID: object
-			[]byte(`{"jsonrpc":"2.0","id":[],"method":"eth_chainId"}`),                       // Invalid ID: array
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":15`),                                    // Invalid method: number
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":""}`),                                   // Invalid method: empty string
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":{}}`),                                   // Invalid method: object
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":[]}`),                                   // Invalid method: array
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":true}`),                                 // Invalid method: boolean
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[{"nested":}]}`), // Invalid params: nested invalid JSON
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":"not_array"}`),   // Invalid params: simple string
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":15}`),            // Invalid params: number
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":}`),              // Invalid params: missing value
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":true}`),          // Invalid params: boolean
-			[]byte(`{"jsonrpc":"2.0","id":1,"params":[]}`),                                   // Missing method
-			[]byte(`{"jsonrpc":"2.0","id":1}`),                                               // Missing method field + params
-			[]byte(`{"0x123": "abs"}`),                                                       // Invalid JSONRPC request, but valid JSON
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]`),             // Missing closing bracket
+			// Invalid JSONRPC field
+			[]byte(`{"json":"2.0","id":1,"method":"eth_chainId"`),
+			// Invalid ID: missing value
+			[]byte(`{"jsonrpc":"2.0","id":,"method":"eth_chainId"}`),
+			// Invalid ID: boolean
+			[]byte(`{"jsonrpc":"2.0","id":true,"method":"eth_chainId"}`),
+			// Invalid ID: object
+			[]byte(`{"jsonrpc":"2.0","id":{},"method":"eth_chainId"}`),
+			// Invalid ID: array
+			[]byte(`{"jsonrpc":"2.0","id":[],"method":"eth_chainId"}`),
+			// Invalid method: number
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":15`),
+			// Invalid method: empty string
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":""}`),
+			// Invalid method: object
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":{}}`),
+			// Invalid method: array
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":[]}`),
+			// Invalid method: boolean
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":true}`),
+			// Invalid params: nested invalid JSON
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[{"nested":}]}`),
+			// Invalid params: simple string
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":"not_array"}`),
+			// Invalid params: number
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":15}`),
+			// Invalid params: missing value
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":}`),
+			// Invalid params: boolean
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":true}`),
+			// Missing method
+			[]byte(`{"jsonrpc":"2.0","id":1,"params":[]}`),
+			// Missing method field + params
+			[]byte(`{"jsonrpc":"2.0","id":1}`),
+			// Invalid JSONRPC request, but valid JSON
+			[]byte(`{"0x123": "abs"}`),
+			// Missing closing bracket
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]`),
 			[]byte(`{}`), // Empty JSON object
 			[]byte(``),   // Empty string
 		}
@@ -280,20 +304,36 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 
 	t.Run("Valid JSONRPC => no error", func(t *testing.T) {
 		validJSONs := [][]byte{
-			[]byte(`{"jsonrpc":"2.0","id":"one","method":"eth_chainId"}`),                                                   // string id
-			[]byte(`{"jsonrpc":"2.0","id":1.1,"method":"eth_chainId"}`),                                                     // float id
-			[]byte(`{"jsonrpc":"2.0","id":25,"method":"eth_chainId"}`),                                                      // int id
-			[]byte(`{"jsonrpc":"2.0","id":null,"method":"eth_chainId"}`),                                                    // null id
-			[]byte(`{"jsonrpc":"2.0","method":"eth_chainId","params":[]}`),                                                  // No ID (notification)
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","extra":"field"}`),                                       // Extra field
-			[]byte(`{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}`),                                       // Empty list params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{}}`),                                           // Empty object params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":""}`),                                           // Empty string params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{"key": "value"}}`),                             // Object params
-			[]byte(`{"jsonrpc":"2.0","id":3,"method":"eth_getBalance","params":["0x123456", "latest"]}`),                    // Multiple params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[{"address": "0x123", "block": "latest"}]}`), // Nested params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`),                                                       // Missing params
-			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":null}`),                                         // Null params
+			// string id
+			[]byte(`{"jsonrpc":"2.0","id":"one","method":"eth_chainId"}`),
+			// float id
+			[]byte(`{"jsonrpc":"2.0","id":1.1,"method":"eth_chainId"}`),
+			// int id
+			[]byte(`{"jsonrpc":"2.0","id":25,"method":"eth_chainId"}`),
+			// null id
+			[]byte(`{"jsonrpc":"2.0","id":null,"method":"eth_chainId"}`),
+			// No ID (notification)
+			[]byte(`{"jsonrpc":"2.0","method":"eth_chainId","params":[]}`),
+			// Extra field
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","extra":"field"}`),
+			// Empty list params
+			[]byte(`{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}`),
+			// Empty object params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{}}`),
+			// Empty string params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":""}`),
+			// Object params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":{"key": "value"}}`),
+			// Multiple params
+			[]byte(`{"jsonrpc":"2.0","id":3,"method":"eth_getBalance",` +
+				`"params":["0x123456", "latest"]}`),
+			// Nested params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_getBalance",` +
+				`"params":[{"address": "0x123", "block": "latest"}]}`),
+			// Missing params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`),
+			// Null params
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":null}`),
 		}
 
 		for _, data := range validJSONs {

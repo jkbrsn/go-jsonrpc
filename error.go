@@ -1,5 +1,3 @@
-// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
-// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (
@@ -7,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // JSON-RPC error codes
@@ -26,7 +24,15 @@ type Error struct {
 	Data    any    `json:"data,omitempty"` // Optional data field
 }
 
-// Equals compares the contents of two JSON-RPC errors. Note: the Data field is not compared.
+// Equals compares the contents of two JSON-RPC errors for equality.
+// Returns true if both errors have the same Code and Message.
+//
+// Note: The Data field is intentionally excluded from comparison because:
+//  1. Data has type `any`, making deep comparison complex and expensive
+//  2. Error equality is typically determined by code + message alone
+//  3. Data is optional and used for supplementary information
+//
+// If you need to compare Data fields, do so separately after calling Equals().
 func (e *Error) Equals(other *Error) bool {
 	if e == nil && other == nil {
 		return true
@@ -43,7 +49,11 @@ func (e *Error) Equals(other *Error) bool {
 	return true
 }
 
-// IsEmpty returns true if the error is empty, which is if the error is nil or both code and message are empty.
+// IsEmpty returns true if the error is empty, which is if the error is nil or both code and message
+// are empty.
+//
+// Note: Zero error codes are valid per JSON-RPC 2.0 spec, but are treated as "empty" when
+// both code=0 and message="". This helps identify placeholder or uninitialized errors.
 func (e *Error) IsEmpty() bool {
 	if e == nil {
 		return true
@@ -56,10 +66,9 @@ func (e *Error) String() string {
 	return fmt.Sprintf("Code: %d, Message: %s", e.Code, e.Message)
 }
 
-// UnmarshalError unmarshals an error from a raw JSON-RPC response. The unmarshal logic uses
-// several fallbacks to ensure an error is produced.
+// UnmarshalJSON unmarshals an error from a raw JSON-RPC response.
+// The unmarshal logic uses several fallbacks to ensure an error is produced.
 func (e *Error) UnmarshalJSON(data []byte) error {
-
 	// Check for null
 	strData := string(data)
 	trimmed := strings.TrimSpace(strData)
@@ -101,8 +110,9 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 }
 
 // Validate checks if the error is valid according to the JSON-RPC specification.
-// Note: This implementation allows zero error codes for spec compliance, but zero codes
-// are considered empty by IsEmpty() and should generally be avoided.
+// An error is valid if it has at least one of: a non-zero code or a non-empty message.
+// Zero error codes are allowed per JSON-RPC 2.0 spec, though they're treated as "empty"
+// by IsEmpty() when combined with an empty message.
 func (e *Error) Validate() error {
 	if e == nil {
 		return errors.New("error is nil")
