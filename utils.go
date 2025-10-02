@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+// revive:disable:add-constant makes sense here
+
 // formatFloat64ID formats a float64 ID as a string, removing trailing zeroes while preserving ".0" for whole numbers.
 //
 // This function supports fractional JSON-RPC IDs, which is a deviation from the JSON-RPC 2.0 specification.
