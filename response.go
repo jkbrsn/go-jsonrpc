@@ -185,7 +185,9 @@ func (r *Response) Equals(other *Response) bool {
 	return true
 }
 
-func (r *Response) IDRaw() any {
+// IDOrNil returns the unmarshaled ID, or nil if unmarshaling fails.
+// For error handling, check the Response's Validate() method.
+func (r *Response) IDOrNil() any {
 	if r.ID == nil {
 		err := r.unmarshalID()
 		if err != nil {
@@ -193,6 +195,12 @@ func (r *Response) IDRaw() any {
 		}
 	}
 	return r.ID
+}
+
+// IDRaw returns the unmarshaled ID, or nil if unmarshaling fails.
+// Deprecated: Use IDOrNil instead for clearer intent. Will be removed in v2.0.
+func (r *Response) IDRaw() any {
+	return r.IDOrNil()
 }
 
 // IDString returns the ID as a string.
@@ -423,31 +431,42 @@ func DecodeResponseFromReader(r io.Reader, expectedSize int) (*Response, error) 
 	return resp, nil
 }
 
-// NewResponseFromBytes parses and returns a new Response from a byte slice.
-// TODO: deprecated, use DecodeResponse instead
-func NewResponseFromBytes(data []byte) (*Response, error) {
-	resp := &Response{}
-	err := resp.parseFromBytes(data)
+// NewResponse creates a JSON-RPC 2.0 response with a result.
+func NewResponse(id any, result any) (*Response, error) {
+	resultBytes, err := sonic.Marshal(result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse response from bytes: %w", err)
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
 
-	return resp, nil
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      id,
+		Result:  resultBytes,
+	}, nil
+}
+
+// NewErrorResponse creates a JSON-RPC 2.0 error response.
+func NewErrorResponse(id any, err *Error) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error:   err,
+	}
+}
+
+// NewResponseFromBytes parses and returns a new Response from a byte slice.
+// Deprecated: Use DecodeResponse instead. Will be removed in v2.0.
+func NewResponseFromBytes(data []byte) (*Response, error) {
+	return DecodeResponse(data)
 }
 
 // NewResponseFromStream parses and returns a new Response from a stream.
-// TODO: deprecated, use DecodeResponseFromReader instead
+// Deprecated: Use DecodeResponseFromReader instead. Will be removed in v2.0.
 func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
 	defer body.Close()
 
-	resp := &Response{}
-	err := resp.parseFromReader(body, expectedSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse response from stream: %w", err)
-	}
-
-	return resp, nil
+	return DecodeResponseFromReader(body, expectedSize)
 }

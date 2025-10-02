@@ -172,14 +172,14 @@ func TestError_Validate(t *testing.T) {
 			Message: "some error",
 		}
 		err := e.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "code is required")
+		// With updated validation, a message alone is sufficient
+		require.NoError(t, err)
 	})
 
 	t.Run("Empty error", func(t *testing.T) {
 		e := &Error{}
 		err := e.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "code is required")
+		assert.Contains(t, err.Error(), "either a non-zero code or a message")
 	})
 }
