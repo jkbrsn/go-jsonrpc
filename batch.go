@@ -4,12 +4,12 @@ package jsonrpc
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json" // Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // isBatchJSON returns true if the trimmed data starts with '[', indicating a batch request/response.

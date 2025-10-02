@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // JSON-RPC error codes

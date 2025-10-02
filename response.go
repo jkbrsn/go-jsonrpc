@@ -4,13 +4,13 @@ package jsonrpc
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json" // Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 
-	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // Response is a struct for JSON-RPC responses conforming to the JSON-RPC 2.0 specification.

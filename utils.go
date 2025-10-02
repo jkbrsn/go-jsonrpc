@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 )
@@ -30,27 +30,48 @@ func formatFloat64ID(id float64) string {
 	return str
 }
 
-// RandomJSONRPCID returns a value appropriate for a JSON-RPC ID field. This is an int with a
-// 32-bit range, as per the JSON-RPC specification.
+// RandomJSONRPCID returns a randomly generated value appropriate for a JSON-RPC ID field.
+// Returns an int64 in the range [0, 2147483647] (int32 range) for compatibility.
+// Uses math/rand/v2 which is automatically seeded and provides good randomness.
 func RandomJSONRPCID() int64 {
-	return int64(rand.Intn(2147483647)) // math.MaxInt32
+	return int64(rand.IntN(2147483647)) // math.MaxInt32
 }
 
 // readAll reads all data from the given reader and returns it as a byte slice.
+// The buffer size adapts based on expectedSize to minimize allocations:
+// - For small messages (<= 1KB): starts with 512B
+// - For medium messages (1KB-16KB): starts with expectedSize
+// - For large messages (>16KB): starts with 16KB, grows as needed
 func readAll(reader io.Reader, chunkSize int64, expectedSize int) ([]byte, error) {
 	if reader == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
 
-	// 16KB buffer by default
-	buffer := bytes.NewBuffer(make([]byte, 0, 16*1024))
-
+	// Adaptive initial buffer sizing
+	initialSize := 512 // Default for unknown sizes (small messages)
 	upperSizeLimit := 50 * 1024 * 1024 // Max limit of 50MB
+
 	if expectedSize > 0 && expectedSize < upperSizeLimit {
-		n := expectedSize - buffer.Cap()
-		if n > 0 {
-			buffer.Grow(n)
+		if expectedSize <= 1024 {
+			// Small messages: use compact buffer
+			initialSize = 512
+		} else if expectedSize <= 16*1024 {
+			// Medium messages: pre-allocate exact size
+			initialSize = expectedSize
+		} else {
+			// Large messages: start with 16KB, grow as needed
+			initialSize = 16 * 1024
 		}
+	} else if expectedSize == 0 {
+		// Unknown size: start small for typical small JSON-RPC messages
+		initialSize = 512
+	}
+
+	buffer := bytes.NewBuffer(make([]byte, 0, initialSize))
+
+	// Grow buffer if we know we'll need more space
+	if expectedSize > initialSize && expectedSize < upperSizeLimit {
+		buffer.Grow(expectedSize - initialSize)
 	}
 
 	// Read data in chunks
