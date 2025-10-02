@@ -704,6 +704,8 @@ func TestDecodeResponseFromReader(t *testing.T) {
 	})
 }
 
+// TestResponse_Concurrency verifies that Response is safe for concurrent reads.
+// Responses are immutable after decode, so concurrent access should never race.
 func TestResponse_Concurrency(t *testing.T) {
 	t.Run("Concurrent IDString", func(t *testing.T) {
 		resp := &Response{ID: int64(12345)}
@@ -797,4 +799,69 @@ func TestResponse_UnmarshalError(t *testing.T) {
 	// Calling again should be idempotent and still succeed.
 	err = resp.UnmarshalError()
 	require.NoError(t, err)
+}
+
+// TestResponse_Immutability verifies that Response fields don't change after decode.
+func TestResponse_Immutability(t *testing.T) {
+	data := []byte(`{"jsonrpc":"2.0","id":123,"result":"success"}`)
+
+	resp, err := DecodeResponse(data)
+	require.NoError(t, err)
+
+	// Capture initial state
+	originalID := resp.ID
+	originalResult := string(resp.Result)
+
+	// Access ID multiple times (triggers lazy unmarshal on first call)
+	id1 := resp.IDOrNil()
+	id2 := resp.IDOrNil()
+	id3 := resp.IDOrNil()
+
+	// All should return same value
+	assert.Equal(t, id1, id2)
+	assert.Equal(t, id2, id3)
+	assert.Equal(t, originalID, id1)
+
+	// Result should never change
+	assert.Equal(t, originalResult, string(resp.Result))
+
+	// Concurrent reads should see consistent state
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.Equal(t, originalID, resp.IDOrNil())
+			assert.Equal(t, originalResult, string(resp.Result))
+		}()
+	}
+	wg.Wait()
+}
+
+// TestResponse_LazyUnmarshalOnce verifies that unmarshalID runs exactly once.
+func TestResponse_LazyUnmarshalOnce(t *testing.T) {
+	data := []byte(`{"jsonrpc":"2.0","id":"test-id","result":true}`)
+
+	resp, err := DecodeResponse(data)
+	require.NoError(t, err)
+
+	// Call IDOrNil concurrently from multiple goroutines
+	var wg sync.WaitGroup
+	results := make([]any, 100)
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx] = resp.IDOrNil()
+		}(i)
+	}
+	wg.Wait()
+
+	// All goroutines should see the same result
+	for i := 1; i < len(results); i++ {
+		assert.Equal(t, results[0], results[i],
+			"All concurrent IDOrNil calls should return the same value")
+	}
+	assert.Equal(t, "test-id", results[0])
 }

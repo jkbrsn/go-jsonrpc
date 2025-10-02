@@ -43,7 +43,7 @@ func (e *Error) Equals(other *Error) bool {
 	return true
 }
 
-// IsEmpty returns true if the error is empty, which is if the code and message are both empty.
+// IsEmpty returns true if the error is empty, which is if the error is nil or both code and message are empty.
 func (e *Error) IsEmpty() bool {
 	if e == nil {
 		return true
@@ -101,12 +101,14 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 }
 
 // Validate checks if the error is valid according to the JSON-RPC specification.
+// Note: This implementation allows zero error codes for spec compliance, but zero codes
+// are considered empty by IsEmpty() and should generally be avoided.
 func (e *Error) Validate() error {
 	if e == nil {
 		return errors.New("error is nil")
 	}
-	if e.Code == 0 {
-		return errors.New("error code is required")
+	if e.Code == 0 && e.Message == "" {
+		return errors.New("error must have either a non-zero code or a message")
 	}
 	return nil
 }

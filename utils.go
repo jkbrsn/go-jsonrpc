@@ -33,7 +33,7 @@ func formatFloat64ID(id float64) string {
 // RandomJSONRPCID returns a value appropriate for a JSON-RPC ID field. This is an int with a
 // 32-bit range, as per the JSON-RPC specification.
 func RandomJSONRPCID() int64 {
-	return int64(rand.Int31())
+	return int64(rand.Intn(2147483647)) // math.MaxInt32
 }
 
 // readAll reads all data from the given reader and returns it as a byte slice.

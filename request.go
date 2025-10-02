@@ -164,6 +164,11 @@ func (r *Request) Validate() error {
 		return errors.New("method field is required")
 	}
 
+	// Check for reserved "rpc." prefix (JSON-RPC 2.0 spec)
+	if len(r.Method) >= 4 && r.Method[:4] == "rpc." {
+		return errors.New("method names starting with 'rpc.' are reserved by JSON-RPC 2.0 spec")
+	}
+
 	switch r.ID.(type) {
 	case nil, string, int64, float64:
 	default:
@@ -178,8 +183,42 @@ func (r *Request) Validate() error {
 	return nil
 }
 
-// RequestFromBytes creates a JSON-RPC request from a byte slice.
-func RequestFromBytes(data []byte) (*Request, error) {
+// NewRequest creates a JSON-RPC 2.0 request with an auto-generated ID.
+func NewRequest(method string, params any) *Request {
+	return &Request{
+		JSONRPC: "2.0",
+		ID:      RandomJSONRPCID(),
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// NewRequestWithID creates a JSON-RPC 2.0 request with a specific ID.
+func NewRequestWithID(method string, params any, id any) *Request {
+	return &Request{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// NewNotification creates a JSON-RPC 2.0 notification (request without ID).
+func NewNotification(method string, params any) *Request {
+	return &Request{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// IsNotification returns true if this is a notification (no ID expected).
+func (r *Request) IsNotification() bool {
+	return r.ID == nil
+}
+
+// DecodeRequest parses a JSON-RPC request from a byte slice.
+func DecodeRequest(data []byte) (*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, fmt.Errorf("empty data")
 	}
@@ -189,4 +228,10 @@ func RequestFromBytes(data []byte) (*Request, error) {
 		return nil, err
 	}
 	return req, nil
+}
+
+// RequestFromBytes creates a JSON-RPC request from a byte slice.
+// Deprecated: Use DecodeRequest instead. Will be removed in v2.0.
+func RequestFromBytes(data []byte) (*Request, error) {
+	return DecodeRequest(data)
 }
