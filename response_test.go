@@ -129,6 +129,99 @@ func TestResponse_Equals(t *testing.T) {
 	}
 }
 
+// TestResponse_EqualsMixedLazyEager tests comparison between eagerly and lazily unmarshaled responses
+func TestResponse_EqualsMixedLazyEager(t *testing.T) {
+	t.Run("Mixed ID - eager vs lazy with same ID", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":42,"result":"success"}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with raw ID still unparsed
+		lazy := &Response{
+			JSONRPC: "2.0",
+			rawID:   json.RawMessage(`42`),
+			Result:  json.RawMessage(`"success"`),
+		}
+
+		// They should be equal even though one has ID unmarshaled and other doesn't
+		assert.True(t, eager.Equals(lazy))
+		assert.True(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed ID - eager vs lazy with different ID", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":42,"result":"success"}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with different raw ID
+		lazy := &Response{
+			JSONRPC: "2.0",
+			rawID:   json.RawMessage(`99`),
+			Result:  json.RawMessage(`"success"`),
+		}
+
+		// They should NOT be equal
+		assert.False(t, eager.Equals(lazy))
+		assert.False(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed Error - eager vs lazy with same error", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager error unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with raw error still unparsed
+		lazy := &Response{
+			JSONRPC:  "2.0",
+			rawID:    json.RawMessage(`1`),
+			rawError: json.RawMessage(`{"code":-32000,"message":"test error"}`),
+		}
+
+		// They should be equal even though one has Error unmarshaled and other doesn't
+		assert.True(t, eager.Equals(lazy))
+		assert.True(t, lazy.Equals(eager))
+	})
+
+	t.Run("Mixed Error - eager vs lazy with different error", func(t *testing.T) {
+		// Create one response via DecodeResponse (eager error unmarshaling)
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		eager, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// Create another response with different raw error
+		lazy := &Response{
+			JSONRPC:  "2.0",
+			rawID:    json.RawMessage(`1`),
+			rawError: json.RawMessage(`{"code":-32001,"message":"different error"}`),
+		}
+
+		// They should NOT be equal
+		assert.False(t, eager.Equals(lazy))
+		assert.False(t, lazy.Equals(eager))
+	})
+
+	t.Run("Both lazy - same values", func(t *testing.T) {
+		lazy1 := &Response{
+			JSONRPC: "2.0",
+			rawID:   json.RawMessage(`"test-id"`),
+			Result:  json.RawMessage(`"result"`),
+		}
+
+		lazy2 := &Response{
+			JSONRPC: "2.0",
+			rawID:   json.RawMessage(`"test-id"`),
+			Result:  json.RawMessage(`"result"`),
+		}
+
+		// Both lazy, same semantic values
+		assert.True(t, lazy1.Equals(lazy2))
+		assert.True(t, lazy2.Equals(lazy1))
+	})
+}
+
 func TestResponse_IDString(t *testing.T) {
 	t.Run("No ID set => returns empty string", func(t *testing.T) {
 		resp := &Response{}

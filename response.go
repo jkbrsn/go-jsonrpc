@@ -118,8 +118,8 @@ func (r *Response) parseFromBytes(data []byte) error {
 // unmarshalID unmarshals the raw ID bytes into the ID field.
 // This function is designed to be called via sync.Once to ensure it runs exactly once.
 func (r *Response) unmarshalID() error {
+	// If there's no rawID to unmarshal, leave ID field as-is (may be nil or already set)
 	if len(r.rawID) == 0 {
-		r.ID = nil
 		return nil
 	}
 
@@ -156,7 +156,8 @@ func (r *Response) unmarshalID() error {
 }
 
 // Equals compares the contents of two JSON-RPC responses.
-// TODO: adapt to both raw (parsed) and unmarshalled cases, test that
+// This method handles both eagerly and lazily unmarshaled responses by ensuring
+// both IDs and Errors are unmarshaled before comparison.
 func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
@@ -164,9 +165,18 @@ func (r *Response) Equals(other *Response) bool {
 	if r.JSONRPC != other.JSONRPC {
 		return false
 	}
-	if r.ID != other.ID {
+
+	// Ensure both IDs are unmarshaled before comparing (if they have rawID set)
+	rID := r.IDOrNil()
+	otherID := other.IDOrNil()
+
+	if rID != otherID {
 		return false
 	}
+
+	// Ensure both errors are unmarshaled before comparing
+	_ = r.UnmarshalError()
+	_ = other.UnmarshalError()
 
 	if !r.Error.Equals(other.Error) {
 		return false
