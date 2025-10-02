@@ -26,7 +26,15 @@ type Error struct {
 	Data    any    `json:"data,omitempty"` // Optional data field
 }
 
-// Equals compares the contents of two JSON-RPC errors. Note: the Data field is not compared.
+// Equals compares the contents of two JSON-RPC errors for equality.
+// Returns true if both errors have the same Code and Message.
+//
+// Note: The Data field is intentionally excluded from comparison because:
+//  1. Data has type `any`, making deep comparison complex and expensive
+//  2. Error equality is typically determined by code + message alone
+//  3. Data is optional and used for supplementary information
+//
+// If you need to compare Data fields, do so separately after calling Equals().
 func (e *Error) Equals(other *Error) bool {
 	if e == nil && other == nil {
 		return true

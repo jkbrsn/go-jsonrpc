@@ -77,7 +77,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 
 	// Validate JSON-RPC version
 	if aux.JSONRPC != "2.0" {
-		return errors.New("invalid JSON-RPC version: " + aux.JSONRPC)
+		return fmt.Errorf("invalid JSON-RPC version: %s", aux.JSONRPC)
 	}
 	r.JSONRPC = aux.JSONRPC
 
@@ -370,7 +370,7 @@ func (r *Response) Validate() error {
 	}
 
 	if r.JSONRPC != "2.0" {
-		return errors.New("invalid jsonrpc version: " + r.JSONRPC)
+		return fmt.Errorf("invalid jsonrpc version: %s", r.JSONRPC)
 	}
 
 	switch r.ID.(type) {
