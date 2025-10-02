@@ -39,7 +39,7 @@ type Response struct {
 
 // jsonRPCResponse is an internal representation of a JSON-RPC response.
 // This is decoupled from the public struct to allow for custom handling of the response data,
-// separately from how it is marshalled and unmarshalled.
+// separately from how it is marshaled and unmarshaled.
 type jsonRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      any             `json:"id"`
@@ -331,12 +331,12 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 		Result:  result,
 	}
 
-	marshalled, err := sonic.Marshal(output)
+	marshaled, err := sonic.Marshal(output)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal JSON-RPC response: %w", err)
 	}
 
-	return marshalled, nil
+	return marshaled, nil
 }
 
 // String returns a string representation of the JSON-RPC response.

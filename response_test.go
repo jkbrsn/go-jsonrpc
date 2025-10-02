@@ -409,13 +409,13 @@ func TestResponse_MarshalJSON(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			marshalled, err := tc.resp.MarshalJSON()
+			marshaled, err := tc.resp.MarshalJSON()
 			if tc.runtimeErr {
 				assert.Error(t, err)
-				assert.Nil(t, marshalled)
+				assert.Nil(t, marshaled)
 			} else {
 				assert.NoError(t, err)
-				assert.JSONEq(t, string(tc.json), string(marshalled))
+				assert.JSONEq(t, string(tc.json), string(marshaled))
 			}
 		})
 	}
