@@ -11,6 +11,9 @@
 
 ## future considerations
 
+- Support for choice of JSON parser
+  - E.g. allow for using `encoding/json` instead of `sonic`
+  - Benchmark and compare performance
 - A “parse then make immutable” pattern for Request, and Error
 - The ability to add custom fields to Request, Response, and Error
   - This would allow for flexible usage with custom API:s
