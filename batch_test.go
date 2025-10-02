@@ -157,12 +157,12 @@ func TestDecodeBatchResponse(t *testing.T) {
 		resps, err := DecodeBatchResponse(data)
 		require.NoError(t, err)
 		assert.Len(t, resps, 2)
-		assert.Nil(t, resps[0].Error)
+		assert.Nil(t, resps[0].Err())
 
 		// Unmarshal the error for the second response
 		require.NoError(t, resps[1].UnmarshalError())
-		assert.NotNil(t, resps[1].Error)
-		assert.Equal(t, MethodNotFound, resps[1].Error.Code)
+		assert.NotNil(t, resps[1].Err())
+		assert.Equal(t, MethodNotFound, resps[1].Err().Code)
 	})
 
 	t.Run("Batch with one invalid response", func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestEncodeBatchResponse(t *testing.T) {
 
 		resps := []*Response{
 			validResp,
-			{JSONRPC: "1.0", ID: int64(2)}, // Invalid version
+			{jsonrpc: "1.0", id: int64(2)}, // Invalid version
 		}
 		_, err = EncodeBatchResponse(resps)
 		require.Error(t, err)
@@ -525,7 +525,7 @@ func TestBatchRoundTrip(t *testing.T) {
 
 		// Unmarshal the error
 		require.NoError(t, decoded[1].UnmarshalError())
-		assert.NotNil(t, decoded[1].Error)
-		assert.Equal(t, InvalidRequest, decoded[1].Error.Code)
+		assert.NotNil(t, decoded[1].Err())
+		assert.Equal(t, InvalidRequest, decoded[1].Err().Code)
 	})
 }

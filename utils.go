@@ -54,7 +54,7 @@ func readAll(reader io.Reader, chunkSize int64, expectedSize int) ([]byte, error
 	}
 
 	// Adaptive initial buffer sizing
-	initialSize := 512 // Default for unknown sizes (small messages)
+	initialSize := 512                 // Default for unknown sizes (small messages)
 	upperSizeLimit := 50 * 1024 * 1024 // Max limit of 50MB
 
 	if expectedSize > 0 && expectedSize < upperSizeLimit {

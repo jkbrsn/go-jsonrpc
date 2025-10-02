@@ -55,7 +55,7 @@ func ExampleRequest_UnmarshalParams() {
 	// Unmarshal params into struct
 	var params UserParams
 	if err := req.UnmarshalParams(&params); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func ExampleResponse_UnmarshalResult() {
 	jsonData := []byte(`{"jsonrpc":"2.0","id":1,"result":{"balance":1000,"currency":"USD"}}`)
 	resp, err := DecodeResponse(jsonData)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 
@@ -116,7 +116,7 @@ func ExampleResponse_UnmarshalResult() {
 	// Unmarshal result
 	var result BalanceResult
 	if err := resp.UnmarshalResult(&result); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 
@@ -133,7 +133,7 @@ func ExampleResponse_UnmarshalResult_primitives() {
 
 	var strResult string
 	if err := resp.UnmarshalResult(&strResult); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 	fmt.Printf("String: %s\n", strResult)
@@ -144,7 +144,7 @@ func ExampleResponse_UnmarshalResult_primitives() {
 
 	var intResult int
 	if err := resp.UnmarshalResult(&intResult); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 	fmt.Printf("Number: %d\n", intResult)
@@ -155,7 +155,7 @@ func ExampleResponse_UnmarshalResult_primitives() {
 
 	var boolResult bool
 	if err := resp.UnmarshalResult(&boolResult); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 	fmt.Printf("Boolean: %t\n", boolResult)
@@ -177,8 +177,8 @@ func ExampleResponse_UnmarshalError() {
 
 	// For responses with errors, the error is automatically unmarshaled during decode
 	// Check if response has an error
-	if resp.Error != nil {
-		fmt.Printf("RPC Error %d: %s\n", resp.Error.Code, resp.Error.Message)
+	if resp.Err() != nil {
+		fmt.Printf("RPC Error %d: %s\n", resp.Err().Code, resp.Err().Message)
 	}
 	// Output:
 	// RPC Error -32601: Method not found
@@ -195,7 +195,7 @@ func ExampleNewBatchRequest() {
 
 	reqs, err := NewBatchRequest(methods, params)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("err: %v\n", err)
 		return
 	}
 

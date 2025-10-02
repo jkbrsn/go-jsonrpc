@@ -15,17 +15,18 @@ import (
 
 // Response is a struct for JSON-RPC responses conforming to the JSON-RPC 2.0 specification.
 // Response instances are immutable after decoding and safe for concurrent reads.
-// Do not modify Response fields directly after calling DecodeResponse or UnmarshalJSON.
+// All fields are unexported to enforce immutability. Use getter methods to access field values.
 //
 // The Response type uses lazy unmarshaling for the ID and Error fields to optimize performance.
-// These fields are unmarshaled on first access via IDOrNil() or UnmarshalError() respectively.
+// These fields are unmarshaled on first access via IDOrNil() or Err() respectively.
 type Response struct {
-	JSONRPC string
+	jsonrpc string
 
-	// Public immutable fields (set once during decode, never modified)
-	ID     any
-	Error  *Error
-	Result json.RawMessage
+	// Immutable fields (set once during decode, never modified)
+	// Access via getter methods: IDOrNil(), Err(), RawResult()
+	id     any
+	err    *Error
+	result json.RawMessage
 
 	// Internal fields for lazy unmarshaling
 	rawID    json.RawMessage
@@ -44,6 +45,27 @@ type jsonRPCResponse struct {
 	ID      any             `json:"id"`
 	Error   *Error          `json:"error,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
+}
+
+// Getter methods for Response fields
+
+// Version returns the JSON-RPC protocol version (always "2.0" for valid responses).
+func (r *Response) Version() string {
+	return r.jsonrpc
+}
+
+// Err returns the error from the response, if any.
+// The error is unmarshaled lazily on first call and cached for subsequent calls.
+// This method is safe for concurrent use.
+func (r *Response) Err() *Error {
+	_ = r.UnmarshalError()
+	return r.err
+}
+
+// RawResult returns the raw JSON result bytes.
+// Use UnmarshalResult to decode the result into a specific type.
+func (r *Response) RawResult() json.RawMessage {
+	return r.result
 }
 
 // parseFromReader parses a JSON-RPC response from a reader.
@@ -79,7 +101,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 	if aux.JSONRPC != "2.0" {
 		return fmt.Errorf("invalid JSON-RPC version: %s", aux.JSONRPC)
 	}
-	r.JSONRPC = aux.JSONRPC
+	r.jsonrpc = aux.JSONRPC
 
 	// Validate that either result or error is present
 	resultExists := len(aux.Result) > 0
@@ -102,7 +124,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 
 	// Assign result or error accordingly
 	if aux.Result != nil {
-		r.Result = aux.Result
+		r.result = aux.Result
 	} else {
 		r.rawError = aux.Error
 	}
@@ -130,7 +152,7 @@ func (r *Response) unmarshalID() error {
 
 	// If the value is "null", id will be nil
 	if id == nil {
-		r.ID = nil
+		r.id = nil
 		return nil
 	}
 
@@ -138,15 +160,15 @@ func (r *Response) unmarshalID() error {
 	case float64:
 		// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
 		if v != float64(int64(v)) {
-			r.ID = v
+			r.id = v
 		} else {
-			r.ID = int64(v)
+			r.id = int64(v)
 		}
 	case string:
 		if v == "" {
-			r.ID = nil
+			r.id = nil
 		} else {
-			r.ID = v
+			r.id = v
 		}
 	default:
 		return errors.New("id field must be a string or a number")
@@ -162,11 +184,12 @@ func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
 	}
-	if r.JSONRPC != other.JSONRPC {
+	if r.jsonrpc != other.jsonrpc {
 		return false
 	}
 
 	// Ensure both IDs are unmarshaled before comparing (if they have rawID set)
+	// IDOrNil() uses sync.Once internally to unmarshal lazily
 	rID := r.IDOrNil()
 	otherID := other.IDOrNil()
 
@@ -178,12 +201,12 @@ func (r *Response) Equals(other *Response) bool {
 	_ = r.UnmarshalError()
 	_ = other.UnmarshalError()
 
-	if !r.Error.Equals(other.Error) {
+	if !r.err.Equals(other.err) {
 		return false
 	}
 
-	if r.Result != nil && other.Result != nil {
-		if string(r.Result) != string(other.Result) {
+	if r.result != nil && other.result != nil {
+		if string(r.result) != string(other.result) {
 			return false
 		}
 	}
@@ -200,7 +223,7 @@ func (r *Response) IDOrNil() any {
 		// If unmarshal fails, ID remains nil
 		_ = r.unmarshalID()
 	})
-	return r.ID
+	return r.id
 }
 
 // IDRaw returns the unmarshaled ID, or nil if unmarshaling fails.
@@ -211,7 +234,7 @@ func (r *Response) IDRaw() any {
 
 // IDString returns the ID as a string.
 func (r *Response) IDString() string {
-	switch id := r.ID.(type) {
+	switch id := r.id.(type) {
 	case string:
 		return id
 	case int64:
@@ -241,22 +264,22 @@ func (r *Response) IsEmpty() bool {
 	}
 
 	// Case: both error and result are empty
-	if r.Error == nil && len(r.Result) == 0 {
+	if r.err == nil && len(r.result) == 0 {
 		return true
 	}
 
-	emptyError := r.Error.IsEmpty()
+	emptyError := r.err.IsEmpty()
 
 	// A JSON-RPC response result id considered empty if it's empty or contains a zero hex value,
 	// a null value, an empty string, an empty array, or an empty object.
 	var emptyResult bool
-	resultBytes := len(r.Result)
+	resultBytes := len(r.result)
 	if resultBytes == 0 ||
-		(resultBytes == 4 && r.Result[0] == '"' && r.Result[1] == '0' && r.Result[2] == 'x' && r.Result[3] == '"') ||
-		(resultBytes == 4 && r.Result[0] == 'n' && r.Result[1] == 'u' && r.Result[2] == 'l' && r.Result[3] == 'l') ||
-		(resultBytes == 2 && r.Result[0] == '"' && r.Result[1] == '"') ||
-		(resultBytes == 2 && r.Result[0] == '[' && r.Result[1] == ']') ||
-		(resultBytes == 2 && r.Result[0] == '{' && r.Result[1] == '}') {
+		(resultBytes == 4 && r.result[0] == '"' && r.result[1] == '0' && r.result[2] == 'x' && r.result[3] == '"') ||
+		(resultBytes == 4 && r.result[0] == 'n' && r.result[1] == 'u' && r.result[2] == 'l' && r.result[3] == 'l') ||
+		(resultBytes == 2 && r.result[0] == '"' && r.result[1] == '"') ||
+		(resultBytes == 2 && r.result[0] == '[' && r.result[1] == ']') ||
+		(resultBytes == 2 && r.result[0] == '{' && r.result[1] == '}') {
 		emptyResult = true
 	} else {
 		emptyResult = false
@@ -275,8 +298,8 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 	// Retrieve the ID value
 	var id any
-	if r.ID != nil {
-		id = r.ID
+	if r.id != nil {
+		id = r.id
 	} else if r.rawID != nil {
 		id = r.rawID
 	} else {
@@ -285,24 +308,24 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 	// Retrieve the error value
 	// If rawError exists but Error hasn't been unmarshaled, do it now
-	if len(r.rawError) > 0 && r.Error == nil {
-		r.Error = &Error{}
-		if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
+	if len(r.rawError) > 0 && r.err == nil {
+		r.err = &Error{}
+		if err := r.err.UnmarshalJSON(r.rawError); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
 	}
-	errVal := r.Error
+	errVal := r.err
 
 	// Retrieve the result
 	// Since it is already a JSON encoded []byte, we wrap it as json.RawMessage to prevent sonic from re-encoding it.
 	var result json.RawMessage
-	if len(r.Result) > 0 {
-		result = json.RawMessage(r.Result)
+	if len(r.result) > 0 {
+		result = json.RawMessage(r.result)
 	}
 
 	// Build the output struct. Fields with zero values are omitted.
 	output := jsonRPCResponse{
-		JSONRPC: r.JSONRPC,
+		JSONRPC: r.jsonrpc,
 		ID:      id,
 		Error:   errVal,
 		Result:  result,
@@ -318,7 +341,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 // String returns a string representation of the JSON-RPC response.
 func (r *Response) String() string {
-	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.ID, r.Error, len(r.Result))
+	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.id, r.err, len(r.result))
 }
 
 // UnmarshalError unmarshals the raw error into the Error field.
@@ -328,9 +351,9 @@ func (r *Response) UnmarshalError() error {
 	var unmarshalErr error
 
 	r.errOnce.Do(func() {
-		if r.Error == nil && len(r.rawError) > 0 {
-			r.Error = &Error{}
-			unmarshalErr = r.Error.UnmarshalJSON(r.rawError)
+		if r.err == nil && len(r.rawError) > 0 {
+			r.err = &Error{}
+			unmarshalErr = r.err.UnmarshalJSON(r.rawError)
 		}
 	})
 
@@ -348,10 +371,10 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 
 	// If the response carries an error (and no result), decode it eagerly so callers
 	// can inspect *Response.Error without an extra step.
-	if len(r.Result) == 0 {
-		if r.Error == nil && len(r.rawError) > 0 {
-			r.Error = &Error{}
-			if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
+	if len(r.result) == 0 {
+		if r.err == nil && len(r.rawError) > 0 {
+			r.err = &Error{}
+			if err := r.err.UnmarshalJSON(r.rawError); err != nil {
 				return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 			}
 		}
@@ -366,11 +389,11 @@ func (r *Response) UnmarshalResult(dst any) error {
 		return errors.New("destination pointer cannot be nil")
 	}
 
-	if len(r.Result) == 0 {
+	if len(r.result) == 0 {
 		return errors.New("response has no result field")
 	}
 
-	return sonic.Unmarshal(r.Result, dst)
+	return sonic.Unmarshal(r.result, dst)
 }
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
@@ -379,20 +402,20 @@ func (r *Response) Validate() error {
 		return errors.New("response is nil")
 	}
 
-	if r.JSONRPC != "2.0" {
-		return fmt.Errorf("invalid jsonrpc version: %s", r.JSONRPC)
+	if r.jsonrpc != "2.0" {
+		return fmt.Errorf("invalid jsonrpc version: %s", r.jsonrpc)
 	}
 
-	switch r.ID.(type) {
+	switch r.id.(type) {
 	case nil, string, int64, float64:
 	default:
 		return errors.New("id field must be a string or a number")
 	}
 
-	if r.Error != nil && r.Result != nil || r.rawError != nil && r.Result != nil {
+	if r.err != nil && r.result != nil || r.rawError != nil && r.result != nil {
 		return errors.New("response must not contain both result and error")
 	}
-	if r.Error == nil && len(r.rawError) == 0 && r.Result == nil {
+	if r.err == nil && len(r.rawError) == 0 && r.result == nil {
 		return errors.New("response must contain either result or error")
 	}
 
@@ -411,10 +434,10 @@ func DecodeResponse(data []byte) (*Response, error) {
 	}
 
 	// If the response carries an error (and no result), decode it eagerly so callers
-	// can inspect *Response.Error without an extra step.
-	if len(resp.Result) == 0 && len(resp.rawError) > 0 {
-		resp.Error = &Error{}
-		if err := resp.Error.UnmarshalJSON(resp.rawError); err != nil {
+	// can inspect *Response.err without an extra step.
+	if len(resp.result) == 0 && len(resp.rawError) > 0 {
+		resp.err = &Error{}
+		if err := resp.err.UnmarshalJSON(resp.rawError); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 		}
 	}
@@ -443,18 +466,27 @@ func NewResponse(id any, result any) (*Response, error) {
 	}
 
 	return &Response{
-		JSONRPC: "2.0",
-		ID:      id,
-		Result:  resultBytes,
+		jsonrpc: "2.0",
+		id:      id,
+		result:  resultBytes,
+	}, nil
+}
+
+// NewResponseFromRaw creates a JSON-RPC 2.0 response with a raw result.
+func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
+	return &Response{
+		jsonrpc: "2.0",
+		id:      id,
+		result:  rawResult,
 	}, nil
 }
 
 // NewErrorResponse creates a JSON-RPC 2.0 error response.
 func NewErrorResponse(id any, err *Error) *Response {
 	return &Response{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error:   err,
+		jsonrpc: "2.0",
+		id:      id,
+		err:     err,
 	}
 }
 

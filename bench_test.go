@@ -208,9 +208,9 @@ func BenchmarkRequestMarshal(b *testing.B) {
 // TODO: Add separate benchmarks for error responses vs result responses
 func BenchmarkResponseMarshal(b *testing.B) {
 	resp := &Response{
-		JSONRPC: "2.0",
-		ID:      int64(42),
-		Result:  []byte(`{"userId":12345,"name":"Alice Johnson","status":"active"}`),
+		jsonrpc: "2.0",
+		id:      int64(42),
+		result:  []byte(`{"userId":12345,"name":"Alice Johnson","status":"active"}`),
 	}
 
 	b.ReportAllocs()
@@ -251,10 +251,10 @@ func BenchmarkUnmarshalParams(b *testing.B) {
 	req, _ := DecodeRequest(mediumRequestJSON)
 
 	type Params struct {
-		UserID      int               `json:"userId"`
-		Name        string            `json:"name"`
-		Email       string            `json:"email"`
-		Preferences map[string]any    `json:"preferences"`
+		UserID      int            `json:"userId"`
+		Name        string         `json:"name"`
+		Email       string         `json:"email"`
+		Preferences map[string]any `json:"preferences"`
 	}
 
 	b.ReportAllocs()

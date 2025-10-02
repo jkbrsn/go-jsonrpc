@@ -48,8 +48,8 @@ if err != nil {
 }
 
 // Check for JSON-RPC error
-if resp.Error != nil {
-    fmt.Printf("RPC Error: %s\n", resp.Error.Message)
+if resp.Err() != nil {
+    fmt.Printf("RPC Error: %s\n", resp.Err().Message)
     return
 }
 
@@ -138,7 +138,7 @@ reqs, err := jsonrpc.NewBatchRequest(
 ```go
 resps, err := jsonrpc.DecodeBatchResponse(data)
 for _, resp := range resps {
-    if resp.Error != nil {
+    if resp.Err() != nil {
         // Handle error
     } else {
         var result int
@@ -178,6 +178,10 @@ If you're upgrading from earlier versions, some function names have changed to f
 - `NewResponseFromBytes` → `DecodeResponse`
 - `NewResponseFromStream` → `DecodeResponseFromReader` (note: does not auto-close reader)
 - `resp.IDRaw()` → `resp.IDOrNil()`
+- `resp.Error` → `resp.Err()` (field is now unexported)
+- `resp.Result` → `resp.RawResult()` (field is now unexported)
+- `resp.JSONRPC` → `resp.Version()` (field is now unexported)
+- `resp.ID` → `resp.IDOrNil()` (field is now unexported)
 
 ## Contributing
 

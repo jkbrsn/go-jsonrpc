@@ -13,7 +13,6 @@ import (
 
 // Request is a struct for a JSON-RPC request. It conforms to the JSON-RPC 2.0 specification, with
 // minor exceptions. E.g. the ID field is allowed to be fractional in this implementation.
-// Note: to ensure proper conformance, use the provided constructors and methods.
 type Request struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      any    `json:"id,omitempty"`

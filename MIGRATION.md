@@ -73,14 +73,69 @@ id := resp.IDOrNil()
 
 **Rationale:** `IDOrNil` more clearly expresses the return semantics—it returns the ID value or nil if unmarshaling fails.
 
+### Response Field Access
+
+Response fields are now unexported to enforce true immutability. Use getter methods instead of direct field access.
+
+**Before:**
+```go
+resp := &jsonrpc.Response{
+    JSONRPC: "2.0",
+    ID: int64(1),
+    Result: []byte(`{"foo":"bar"}`),
+}
+
+version := resp.JSONRPC
+id := resp.ID
+result := resp.Result
+err := resp.Error
+```
+
+**After:**
+```go
+// Internal fields are unexported - cannot be directly assigned
+resp := &jsonrpc.Response{
+    jsonrpc: "2.0",  // lowercase
+    id: int64(1),
+    result: []byte(`{"foo":"bar"}`),
+}
+
+// Use getter methods instead
+version := resp.Version()
+id := resp.IDOrNil()
+result := resp.RawResult()
+err := resp.Err()
+```
+
+**Recommended:** Use constructor functions instead of struct literals:
+```go
+// For result responses
+resp, err := jsonrpc.NewResponse(int64(1), map[string]string{"foo": "bar"})
+
+// For error responses
+resp, err := jsonrpc.NewErrorResponse(int64(1), &jsonrpc.Error{
+    Code: -32000,
+    Message: "Something went wrong",
+})
+
+// For decoding from bytes
+resp, err := jsonrpc.DecodeResponse(data)
+```
+
+**Rationale:** Unexported fields prevent accidental mutation and enforce the immutable design pattern. Getter methods provide controlled read-only access.
+
 ## Quick Reference Table
 
-| Deprecated Function | Replacement | Breaking Changes |
-|---------------------|-------------|------------------|
+| Deprecated Function/Field | Replacement | Breaking Changes |
+|---------------------------|-------------|------------------|
 | `RequestFromBytes(data)` | `DecodeRequest(data)` | None |
 | `NewResponseFromBytes(data)` | `DecodeResponse(data)` | None |
 | `NewResponseFromStream(body, size)` | `DecodeResponseFromReader(body, size)` | Does not auto-close reader |
 | `resp.IDRaw()` | `resp.IDOrNil()` | None |
+| `resp.JSONRPC` | `resp.Version()` | Field is now unexported |
+| `resp.ID` | `resp.IDOrNil()` | Field is now unexported |
+| `resp.Result` | `resp.RawResult()` | Field is now unexported |
+| `resp.Error` | `resp.Err()` | Field is now unexported |
 
 ## Migration Checklist
 
@@ -89,6 +144,11 @@ id := resp.IDOrNil()
 - [ ] Search codebase for `NewResponseFromStream` and replace with `DecodeResponseFromReader`
 - [ ] Add `defer body.Close()` where `NewResponseFromStream` was used
 - [ ] Search codebase for `.IDRaw()` and replace with `.IDOrNil()`
+- [ ] Search codebase for `resp.JSONRPC` and replace with `resp.Version()`
+- [ ] Search codebase for `resp.ID` and replace with `resp.IDOrNil()`
+- [ ] Search codebase for `resp.Result` and replace with `resp.RawResult()`
+- [ ] Search codebase for `resp.Error` and replace with `resp.Err()`
+- [ ] Replace Response struct literals with constructor functions
 - [ ] Run tests to verify migration: `go test ./...`
 
 ## Need Help?
