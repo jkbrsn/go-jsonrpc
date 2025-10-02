@@ -938,7 +938,7 @@ func TestResponse_Constructors(t *testing.T) {
 		resp, err := NewResponse("id", "result")
 		require.NoError(t, err)
 		assert.Equal(t, "id", resp.IDString())
-		assert.Equal(t, "result", string(resp.RawResult()))
+		assert.Equal(t, `"result"`, string(resp.RawResult()))
 	})
 
 	t.Run("NewErrorResponse", func(t *testing.T) {
@@ -952,7 +952,7 @@ func TestResponse_Constructors(t *testing.T) {
 		resp, err := NewResponseFromRaw("id", []byte(`"result"`))
 		require.NoError(t, err)
 		assert.Equal(t, "id", resp.IDString())
-		assert.Equal(t, "result", string(resp.RawResult()))
+		assert.Equal(t, `"result"`, string(resp.RawResult()))
 	})
 }
 

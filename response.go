@@ -60,7 +60,8 @@ func (r *Response) Err() *Error {
 	return r.err
 }
 
-// RawResult returns the raw JSON result bytes.
+// RawResult returns the raw JSON-encoded result bytes.
+// For string results, this includes the JSON quotes (e.g., "result" not result).
 // Use UnmarshalResult to decode the result into a specific type.
 func (r *Response) RawResult() json.RawMessage {
 	return r.result
