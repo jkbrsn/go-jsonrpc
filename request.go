@@ -217,6 +217,27 @@ func (r *Request) IsNotification() bool {
 	return r.ID == nil
 }
 
+// UnmarshalParams decodes the Params field into the provided destination pointer.
+// This is a convenience method for unmarshaling structured parameters.
+func (r *Request) UnmarshalParams(dst any) error {
+	if dst == nil {
+		return errors.New("destination pointer cannot be nil")
+	}
+
+	if r.Params == nil {
+		return errors.New("request has no params field")
+	}
+
+	// Marshal params back to JSON, then unmarshal into destination
+	// This handles the conversion from any ([]any or map[string]any) to the target type
+	paramBytes, err := sonic.Marshal(r.Params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	return sonic.Unmarshal(paramBytes, dst)
+}
+
 // DecodeRequest parses a JSON-RPC request from a byte slice.
 func DecodeRequest(data []byte) (*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -231,7 +252,7 @@ func DecodeRequest(data []byte) (*Request, error) {
 }
 
 // RequestFromBytes creates a JSON-RPC request from a byte slice.
-// Deprecated: Use DecodeRequest instead. Will be removed in v2.0.
+// Deprecated: Use DecodeRequest instead. See MIGRATION.md for details. Will be removed in v2.0.
 func RequestFromBytes(data []byte) (*Request, error) {
 	return DecodeRequest(data)
 }

@@ -194,7 +194,7 @@ func (r *Response) IDOrNil() any {
 }
 
 // IDRaw returns the unmarshaled ID, or nil if unmarshaling fails.
-// Deprecated: Use IDOrNil instead for clearer intent. Will be removed in v2.0.
+// Deprecated: Use IDOrNil instead for clearer intent. See MIGRATION.md for details. Will be removed in v2.0.
 func (r *Response) IDRaw() any {
 	return r.IDOrNil()
 }
@@ -213,9 +213,18 @@ func (r *Response) IDString() string {
 	}
 }
 
-// IsEmpty returns whether the JSON-RPC response can be considered empty. A result is considered
-// empty if it is an empty string, an empty array, an empty object, a null value, or a zero hex
-// value. An error is considered empty if it has a code of 0 and an empty message.
+// IsEmpty returns whether the JSON-RPC response can be considered empty.
+//
+// This method is primarily used to detect responses that carry no meaningful data, such as
+// responses from notification requests (which shouldn't exist per spec) or placeholder responses.
+//
+// A response is considered empty when BOTH the error and result are empty:
+//   - Result is empty if: empty byte slice, null, empty string (""), empty array ([]),
+//     empty object ({}), or hex zero value ("0x")
+//   - Error is empty if: nil, or has both code=0 and message=""
+//
+// The specific byte pattern checks (null, "0x", etc.) handle common JSON-RPC conventions
+// where these values represent "no data" semantically.
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
@@ -391,6 +400,15 @@ func DecodeResponse(data []byte) (*Response, error) {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	// If the response carries an error (and no result), decode it eagerly so callers
+	// can inspect *Response.Error without an extra step.
+	if len(resp.Result) == 0 && len(resp.rawError) > 0 {
+		resp.Error = &Error{}
+		if err := resp.Error.UnmarshalJSON(resp.rawError); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
+		}
+	}
+
 	return resp, nil
 }
 
@@ -431,13 +449,14 @@ func NewErrorResponse(id any, err *Error) *Response {
 }
 
 // NewResponseFromBytes parses and returns a new Response from a byte slice.
-// Deprecated: Use DecodeResponse instead. Will be removed in v2.0.
+// Deprecated: Use DecodeResponse instead. See MIGRATION.md for details. Will be removed in v2.0.
 func NewResponseFromBytes(data []byte) (*Response, error) {
 	return DecodeResponse(data)
 }
 
 // NewResponseFromStream parses and returns a new Response from a stream.
-// Deprecated: Use DecodeResponseFromReader instead. Will be removed in v2.0.
+// Deprecated: Use DecodeResponseFromReader instead. Note that DecodeResponseFromReader
+// does NOT automatically close the reader. See MIGRATION.md for details. Will be removed in v2.0.
 func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")

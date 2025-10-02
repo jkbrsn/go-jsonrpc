@@ -180,16 +180,45 @@ func TestResponse_IDString(t *testing.T) {
 
 func TestResponse_IsEmpty(t *testing.T) {
 	t.Run("Results considered empty", func(t *testing.T) {
-		cases := [][]byte{
-			[]byte(`"0x"`),
-			[]byte(`null`),
-			[]byte(`""`),
-			[]byte(`[]`),
-			[]byte(`{}`),
+		cases := []struct {
+			name   string
+			result []byte
+		}{
+			{name: "hex zero", result: []byte(`"0x"`)},
+			{name: "null", result: []byte(`null`)},
+			{name: "empty string", result: []byte(`""`)},
+			{name: "empty array", result: []byte(`[]`)},
+			{name: "empty object", result: []byte(`{}`)},
+			{name: "empty byte slice", result: []byte{}},
 		}
 		for _, c := range cases {
-			resp := &Response{Result: c}
-			assert.True(t, resp.IsEmpty(), "expected %q to be IsEmpty == true", c)
+			t.Run(c.name, func(t *testing.T) {
+				resp := &Response{Result: c.result}
+				assert.True(t, resp.IsEmpty(), "expected %q to be IsEmpty == true", c.result)
+			})
+		}
+	})
+
+	t.Run("Results NOT considered empty", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			result []byte
+		}{
+			{name: "non-zero hex", result: []byte(`"0x1"`)},
+			{name: "number", result: []byte(`42`)},
+			{name: "non-empty string", result: []byte(`"hello"`)},
+			{name: "array with elements", result: []byte(`[1,2,3]`)},
+			{name: "object with fields", result: []byte(`{"key":"value"}`)},
+			{name: "boolean true", result: []byte(`true`)},
+			{name: "boolean false", result: []byte(`false`)},
+			{name: "zero number", result: []byte(`0`)},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				// With non-empty result and empty error, should NOT be empty
+				resp := &Response{Result: c.result}
+				assert.False(t, resp.IsEmpty(), "expected %q to be IsEmpty == false", c.result)
+			})
 		}
 	})
 
@@ -787,18 +816,15 @@ func TestResponse_UnmarshalError(t *testing.T) {
 	resp, err := DecodeResponse(raw)
 	require.NoError(t, err)
 
-	// Error should still be nil until explicitly decoded.
-	assert.Nil(t, resp.Error)
-
-	err = resp.UnmarshalError()
-	require.NoError(t, err)
+	// Error responses are eagerly unmarshaled during DecodeResponse for convenience
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, -32000, resp.Error.Code)
 	assert.Equal(t, "oops", resp.Error.Message)
 
-	// Calling again should be idempotent and still succeed.
+	// Calling UnmarshalError again should be idempotent and still succeed.
 	err = resp.UnmarshalError()
 	require.NoError(t, err)
+	assert.Equal(t, -32000, resp.Error.Code)
 }
 
 // TestResponse_Immutability verifies that Response fields don't change after decode.

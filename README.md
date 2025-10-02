@@ -71,6 +71,48 @@ notification := jsonrpc.NewNotification("log", map[string]any{
 })
 ```
 
+### Working with Params
+
+The library supports both positional (array) and named (object) parameters, as well as structured parameter unmarshaling.
+
+#### Positional Parameters
+
+```go
+// Create a request with array parameters
+req := jsonrpc.NewRequest("subtract", []any{42, 23})
+// Params: [42, 23]
+```
+
+#### Named Parameters
+
+```go
+// Create a request with object parameters
+req := jsonrpc.NewRequest("updateUser", map[string]any{
+    "userId": 123,
+    "name":   "Alice",
+    "active": true,
+})
+// Params: {"userId": 123, "name": "Alice", "active": true}
+```
+
+#### Unmarshaling Params into Structs
+
+```go
+// Define your parameter structure
+type UserParams struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+    Age   int    `json:"age"`
+}
+
+// Unmarshal params into the struct
+var params UserParams
+if err := req.UnmarshalParams(&params); err != nil {
+    // Handle error
+}
+// Use params.Name, params.Email, params.Age
+```
+
 ### Batch Requests and Responses
 
 The library supports JSON-RPC 2.0 batch operations for sending multiple requests or responses in a single call.
@@ -126,6 +168,16 @@ reqs, err := jsonrpc.NewBatchNotification(
     []any{map[string]any{"level": "info"}, map[string]any{"message": "test"}},
 )
 ```
+
+## Migration Guide
+
+If you're upgrading from earlier versions, some function names have changed to follow Go conventions more closely. See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
+
+**Quick reference:**
+- `RequestFromBytes` → `DecodeRequest`
+- `NewResponseFromBytes` → `DecodeResponse`
+- `NewResponseFromStream` → `DecodeResponseFromReader` (note: does not auto-close reader)
+- `resp.IDRaw()` → `resp.IDOrNil()`
 
 ## Contributing
 
