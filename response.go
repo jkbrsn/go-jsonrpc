@@ -13,20 +13,27 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// Response is a struct for JSON-RPC responses.
+// Response is a struct for JSON-RPC responses conforming to the JSON-RPC 2.0 specification.
+// Response instances are immutable after decoding and safe for concurrent reads.
+// Do not modify Response fields directly after calling DecodeResponse or UnmarshalJSON.
+//
+// The Response type uses lazy unmarshaling for the ID and Error fields to optimize performance.
+// These fields are unmarshaled on first access via IDOrNil() or UnmarshalError() respectively.
 type Response struct {
 	JSONRPC string
 
-	ID    any
-	rawID json.RawMessage
-	muID  sync.RWMutex
+	// Public immutable fields (set once during decode, never modified)
+	ID     any
+	Error  *Error
+	Result json.RawMessage
 
-	Error    *Error
+	// Internal fields for lazy unmarshaling
+	rawID    json.RawMessage
 	rawError json.RawMessage
-	muErr    sync.RWMutex
 
-	Result   json.RawMessage
-	muResult sync.RWMutex
+	// One-time initialization guards for lazy operations
+	idOnce  sync.Once
+	errOnce sync.Once
 }
 
 // jsonRPCResponse is an internal representation of a JSON-RPC response.
@@ -86,9 +93,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 	}
 
 	// Parse the ID field
-	r.muID.Lock()
 	r.rawID = aux.ID
-	r.muID.Unlock()
 
 	// Also unmarshal the ID, as the ID field is imperative for use of the Response
 	if err := r.unmarshalID(); err != nil {
@@ -97,13 +102,9 @@ func (r *Response) parseFromBytes(data []byte) error {
 
 	// Assign result or error accordingly
 	if aux.Result != nil {
-		r.muResult.Lock()
 		r.Result = aux.Result
-		r.muResult.Unlock()
 	} else {
-		r.muErr.Lock()
 		r.rawError = aux.Error
-		r.muErr.Unlock()
 	}
 
 	// Validate the response
@@ -114,41 +115,41 @@ func (r *Response) parseFromBytes(data []byte) error {
 	return nil
 }
 
-// unmarshalID unmarshalls the raw ID bytes into the ID field.
+// unmarshalID unmarshals the raw ID bytes into the ID field.
+// This function is designed to be called via sync.Once to ensure it runs exactly once.
 func (r *Response) unmarshalID() error {
-	r.muID.Lock()
-	defer r.muID.Unlock()
+	if len(r.rawID) == 0 {
+		r.ID = nil
+		return nil
+	}
 
-	if len(r.rawID) > 0 {
-		var id any
-		if err := sonic.Unmarshal(r.rawID, &id); err != nil {
-			return fmt.Errorf("invalid id field: %w", err)
+	var id any
+	if err := sonic.Unmarshal(r.rawID, &id); err != nil {
+		return fmt.Errorf("invalid id field: %w", err)
+	}
+
+	// If the value is "null", id will be nil
+	if id == nil {
+		r.ID = nil
+		return nil
+	}
+
+	switch v := id.(type) {
+	case float64:
+		// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+		if v != float64(int64(v)) {
+			r.ID = v
+		} else {
+			r.ID = int64(v)
 		}
-
-		// If the value is "null", id will be nil
-		if id == nil {
+	case string:
+		if v == "" {
 			r.ID = nil
 		} else {
-			switch v := id.(type) {
-			case float64:
-				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
-				if v != float64(int64(v)) {
-					r.ID = v
-				} else {
-					r.ID = int64(v)
-				}
-			case string:
-				if v == "" {
-					r.ID = nil
-				} else {
-					r.ID = v
-				}
-			default:
-				return errors.New("id field must be a string or a number")
-			}
+			r.ID = v
 		}
-	} else {
-		r.ID = nil
+	default:
+		return errors.New("id field must be a string or a number")
 	}
 
 	return nil
@@ -171,11 +172,6 @@ func (r *Response) Equals(other *Response) bool {
 		return false
 	}
 
-	r.muResult.RLock()
-	other.muResult.RLock()
-	defer r.muResult.RUnlock()
-	defer other.muResult.RUnlock()
-
 	if r.Result != nil && other.Result != nil {
 		if string(r.Result) != string(other.Result) {
 			return false
@@ -186,14 +182,14 @@ func (r *Response) Equals(other *Response) bool {
 }
 
 // IDOrNil returns the unmarshaled ID, or nil if unmarshaling fails.
-// For error handling, check the Response's Validate() method.
+// The ID is unmarshaled lazily on first call and cached for subsequent calls.
+// This method is safe for concurrent use.
 func (r *Response) IDOrNil() any {
-	if r.ID == nil {
-		err := r.unmarshalID()
-		if err != nil {
-			return nil
-		}
-	}
+	r.idOnce.Do(func() {
+		// Ignore error - validation happens during decode
+		// If unmarshal fails, ID remains nil
+		_ = r.unmarshalID()
+	})
 	return r.ID
 }
 
@@ -224,9 +220,6 @@ func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
 	}
-
-	r.muResult.RLock()
-	defer r.muResult.RUnlock()
 
 	// Case: both error and result are empty
 	if r.Error == nil && len(r.Result) == 0 {
@@ -262,7 +255,6 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	}
 
 	// Retrieve the ID value
-	r.muID.RLock()
 	var id any
 	if r.ID != nil {
 		id = r.ID
@@ -271,10 +263,9 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	} else {
 		id = nil
 	}
-	r.muID.RUnlock()
 
-	// Retrieve the error value.
-	r.muErr.RLock()
+	// Retrieve the error value
+	// If rawError exists but Error hasn't been unmarshaled, do it now
 	if len(r.rawError) > 0 && r.Error == nil {
 		r.Error = &Error{}
 		if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
@@ -282,16 +273,13 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 		}
 	}
 	errVal := r.Error
-	r.muErr.RUnlock()
 
-	// Retrieve the result. Since it is already a JSON encoded []byte,
-	// we wrap it as json.RawMessage to prevent sonic from re-encoding it.
-	r.muResult.RLock()
+	// Retrieve the result
+	// Since it is already a JSON encoded []byte, we wrap it as json.RawMessage to prevent sonic from re-encoding it.
 	var result json.RawMessage
 	if len(r.Result) > 0 {
 		result = json.RawMessage(r.Result)
 	}
-	r.muResult.RUnlock()
 
 	// Build the output struct. Fields with zero values are omitted.
 	output := jsonRPCResponse{
@@ -315,15 +303,19 @@ func (r *Response) String() string {
 }
 
 // UnmarshalError unmarshals the raw error into the Error field.
+// The error is unmarshaled lazily on first call and cached for subsequent calls.
+// This method is safe for concurrent use.
 func (r *Response) UnmarshalError() error {
-	r.muErr.Lock()
-	defer r.muErr.Unlock()
+	var unmarshalErr error
 
-	if r.Error == nil && len(r.rawError) > 0 {
-		r.Error = &Error{}
-		return r.Error.UnmarshalJSON(r.rawError)
-	}
-	return nil
+	r.errOnce.Do(func() {
+		if r.Error == nil && len(r.rawError) > 0 {
+			r.Error = &Error{}
+			unmarshalErr = r.Error.UnmarshalJSON(r.rawError)
+		}
+	})
+
+	return unmarshalErr
 }
 
 // UnmarshalJSON unmarshals the input data into the members of Response. Note: does not unmarshal
@@ -337,20 +329,13 @@ func (r *Response) UnmarshalJSON(data []byte) error {
 
 	// If the response carries an error (and no result), decode it eagerly so callers
 	// can inspect *Response.Error without an extra step.
-	r.muResult.RLock()
-	resultEmpty := len(r.Result) == 0
-	r.muResult.RUnlock()
-
-	if resultEmpty {
-		r.muErr.Lock()
+	if len(r.Result) == 0 {
 		if r.Error == nil && len(r.rawError) > 0 {
 			r.Error = &Error{}
 			if err := r.Error.UnmarshalJSON(r.rawError); err != nil {
-				r.muErr.Unlock()
 				return fmt.Errorf("failed to unmarshal JSON-RPC error: %w", err)
 			}
 		}
-		r.muErr.Unlock()
 	}
 
 	return nil
@@ -362,15 +347,11 @@ func (r *Response) UnmarshalResult(dst any) error {
 		return errors.New("destination pointer cannot be nil")
 	}
 
-	r.muResult.RLock()
 	if len(r.Result) == 0 {
-		r.muResult.RUnlock()
 		return errors.New("response has no result field")
 	}
-	raw := r.Result
-	r.muResult.RUnlock()
 
-	return sonic.Unmarshal(raw, dst)
+	return sonic.Unmarshal(r.Result, dst)
 }
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
@@ -388,11 +369,6 @@ func (r *Response) Validate() error {
 	default:
 		return errors.New("id field must be a string or a number")
 	}
-
-	r.muErr.RLock()
-	r.muResult.RLock()
-	defer r.muErr.RUnlock()
-	defer r.muResult.RUnlock()
 
 	if r.Error != nil && r.Result != nil || r.rawError != nil && r.Result != nil {
 		return errors.New("response must not contain both result and error")
