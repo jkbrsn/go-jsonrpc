@@ -196,7 +196,8 @@ func TestError_Validate(t *testing.T) {
 	t.Run("Zero code with message is valid", func(t *testing.T) {
 		e := &Error{Code: 0, Message: "some error"}
 		err := e.Validate()
-		require.NoError(t, err, "zero codes are allowed per JSON-RPC 2.0 spec when message is present")
+		require.NoError(t, err,
+			"zero codes are allowed per JSON-RPC 2.0 spec when message is present")
 	})
 
 	t.Run("Nil error", func(t *testing.T) {

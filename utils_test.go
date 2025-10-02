@@ -43,7 +43,12 @@ func TestRandomJSONRPCID(t *testing.T) {
 		// Note: This test may occasionally fail due to randomness, but very unlikely
 		id1 := RandomJSONRPCID()
 		id2 := RandomJSONRPCID()
-		assert.NotEqual(t, id1, id2, "Consecutive IDs should differ (test may rarely fail due to randomness)")
+		assert.NotEqual(
+			t,
+			id1,
+			id2,
+			"Consecutive IDs should differ (test may rarely fail due to randomness)",
+		)
 	})
 }
 

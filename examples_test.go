@@ -1,5 +1,3 @@
-// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
-// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (
@@ -168,7 +166,9 @@ func ExampleResponse_UnmarshalResult_primitives() {
 
 // ExampleResponse_UnmarshalError demonstrates handling error responses.
 func ExampleResponse_UnmarshalError() {
-	jsonData := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`)
+	jsonData := []byte(
+		`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`,
+	)
 	resp, err := DecodeResponse(jsonData)
 	if err != nil {
 		fmt.Printf("Decode error: %v\n", err)

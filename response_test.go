@@ -18,10 +18,10 @@ import (
 // errReader is a simple io.Reader that always returns an error
 type errReadCloser string
 
-func (e errReadCloser) Read(p []byte) (n int, err error) {
+func (e errReadCloser) Read(_ []byte) (n int, err error) {
 	return 0, fmt.Errorf("%s", string(e))
 }
-func (e errReadCloser) Close() error {
+func (errReadCloser) Close() error {
 	return nil
 }
 
@@ -30,7 +30,7 @@ type readCloser struct {
 	*bytes.Reader
 }
 
-func (rc *readCloser) Close() error {
+func (*readCloser) Close() error {
 	return nil
 }
 
@@ -102,21 +102,39 @@ func TestResponse_Equals(t *testing.T) {
 			assertion: true,
 		},
 		{
-			name:      "Different errors, same results",
-			this:      &Response{err: &Error{Code: 123, Message: "error"}, result: []byte(`"result"`)},
-			other:     &Response{err: &Error{Code: 456, Message: "error"}, result: []byte(`"result"`)},
+			name: "Different errors, same results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 456, Message: "error"},
+				result: []byte(`"result"`),
+			},
 			assertion: false,
 		},
 		{
-			name:      "Same errors, different results",
-			this:      &Response{err: &Error{Code: 123, Message: "error"}, result: []byte(`"result1"`)},
-			other:     &Response{err: &Error{Code: 123, Message: "error"}, result: []byte(`"result2"`)},
+			name: "Same errors, different results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result1"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result2"`),
+			},
 			assertion: false,
 		},
 		{
-			name:      "Same errors and results",
-			this:      &Response{err: &Error{Code: 123, Message: "error"}, result: []byte(`"result"`)},
-			other:     &Response{err: &Error{Code: 123, Message: "error"}, result: []byte(`"result"`)},
+			name: "Same errors and results",
+			this: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
+			other: &Response{
+				err:    &Error{Code: 123, Message: "error"},
+				result: []byte(`"result"`),
+			},
 			assertion: true,
 		},
 	}
@@ -129,7 +147,8 @@ func TestResponse_Equals(t *testing.T) {
 	}
 }
 
-// TestResponse_EqualsMixedLazyEager tests comparison between eagerly and lazily unmarshaled responses
+// TestResponse_EqualsMixedLazyEager tests comparison between
+// eagerly and lazily unmarshaled responses
 func TestResponse_EqualsMixedLazyEager(t *testing.T) {
 	t.Run("Mixed ID - eager vs lazy with same ID", func(t *testing.T) {
 		// Create one response via DecodeResponse (eager unmarshaling)
@@ -361,7 +380,10 @@ func TestResponse_IsEmpty(t *testing.T) {
 			},
 			{
 				name: "Result and error",
-				resp: &Response{result: []byte(`"some-value"`), err: &Error{Code: 123, Message: "some error"}},
+				resp: &Response{
+					result: []byte(`"some-value"`),
+					err:    &Error{Code: 123, Message: "some error"},
+				},
 			},
 		}
 
@@ -382,18 +404,34 @@ func TestResponse_MarshalJSON(t *testing.T) {
 	}{
 		{
 			name: "Response with result",
-			resp: &Response{jsonrpc: "2.0", id: int64(1), result: []byte(`{"foo":"bar"}`)},
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      int64(1),
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			json: []byte(`{"jsonrpc":"2.0","id":1,"result":{"foo":"bar"}}`),
 		},
 		{
 			name: "Response with Error",
-			resp: &Response{jsonrpc: "2.0", id: "first", err: &Error{Code: 123, Message: "test msg"}},
-			json: []byte(`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`),
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
+			json: []byte(
+				`{"jsonrpc":"2.0","id":"first","error":{"code":123,"message":"test msg"}}`,
+			),
 		},
 		{
 			name: "Response with rawError and nil ID",
-			resp: &Response{jsonrpc: "2.0", id: nil, rawError: []byte(`{"code":123,"message":"test msg"}`)},
-			json: []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`),
+			resp: &Response{
+				jsonrpc:  "2.0",
+				id:       nil,
+				rawError: []byte(`{"code":123,"message":"test msg"}`),
+			},
+			json: []byte(
+				`{"jsonrpc":"2.0","id":null,"error":{"code":123,"message":"test msg"}}`,
+			),
 		},
 		{
 			name: "Invalid: both result and error",
@@ -583,8 +621,10 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			respRes:    []byte(`{"foo":"bar"}`),
 		},
 		{
-			name:       "Has id and correctly formed error 1",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":"abc","error":{"code":-123,"message":"some msg"}}`),
+			name: "Has id and correctly formed error 1",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":"abc","error":{"code":-123,"message":"some msg"}}`,
+			),
 			runtimeErr: false,
 			respErr: &Error{
 				Code:    -123,
@@ -593,8 +633,10 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			respID: "abc",
 		},
 		{
-			name:       "Has id and correctly formed error 2",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":5,"error":{"code":-1234,"data":"some data"}}`),
+			name: "Has id and correctly formed error 2",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":5,"error":{"code":-1234,"data":"some data"}}`,
+			),
 			runtimeErr: false,
 			respErr: &Error{
 				Code: -1234,
@@ -629,8 +671,11 @@ func TestResponse_UnmarshalJSON(t *testing.T) {
 			errMessage: "response must contain either result or error",
 		},
 		{
-			name:       "Both error and result",
-			bytes:      []byte(`{"jsonrpc":"2.0","id":2,"error":{"code":-123,"message":"some msg"},"result":{"foo":"bar"}}`),
+			name: "Both error and result",
+			bytes: []byte(
+				`{"jsonrpc":"2.0","id":2,` +
+					`"error":{"code":-123,"message":"some msg"},"result":{"foo":"bar"}}`,
+			),
 			runtimeErr: true,
 			errMessage: "response must not contain both result and error",
 		},
@@ -686,13 +731,21 @@ func TestResponse_Validate(t *testing.T) {
 		errMessage string
 	}{
 		{
-			name:       "Valid response with result",
-			resp:       &Response{jsonrpc: "2.0", id: int64(1), result: []byte(`{"foo":"bar"}`)},
+			name: "Valid response with result",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      int64(1),
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			runtimeErr: false,
 		},
 		{
-			name:       "Valid response with error",
-			resp:       &Response{jsonrpc: "2.0", id: "first", err: &Error{Code: 123, Message: "test msg"}},
+			name: "Valid response with error",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
 			runtimeErr: false,
 		},
 		{
@@ -702,14 +755,23 @@ func TestResponse_Validate(t *testing.T) {
 			errMessage: "invalid jsonrpc version",
 		},
 		{
-			name:       "Invalid ID type",
-			resp:       &Response{jsonrpc: "2.0", id: []int{1, 2, 3}, result: []byte(`{"foo":"bar"}`)},
+			name: "Invalid ID type",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      []int{1, 2, 3},
+				result:  []byte(`{"foo":"bar"}`),
+			},
 			runtimeErr: true,
 			errMessage: "id field must be a string or a number",
 		},
 		{
-			name:       "Both result and error",
-			resp:       &Response{jsonrpc: "2.0", id: "first", result: []byte(`{"foo":"bar"}`), err: &Error{Code: 123, Message: "test msg"}},
+			name: "Both result and error",
+			resp: &Response{
+				jsonrpc: "2.0",
+				id:      "first",
+				result:  []byte(`{"foo":"bar"}`),
+				err:     &Error{Code: 123, Message: "test msg"},
+			},
 			runtimeErr: true,
 			errMessage: "response must not contain both result and error",
 		},

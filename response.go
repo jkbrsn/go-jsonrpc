@@ -1,10 +1,8 @@
-// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
-// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (
 	"bytes"
-	"encoding/json" // Used for json.RawMessage type, which provides interop with stdlib encoding/json
+	"encoding/json" // Used for json.RawMessage type
 	"errors"
 	"fmt"
 	"io"
@@ -71,7 +69,7 @@ func (r *Response) RawResult() json.RawMessage {
 // parseFromReader parses a JSON-RPC response from a reader.
 func (r *Response) parseFromReader(reader io.Reader, expectedSize int) error {
 	// 16KB chunks by default
-	chunkSize := 16 * 1024
+	chunkSize := defaultChunkSize
 	data, err := readAll(reader, int64(chunkSize), expectedSize)
 	if err != nil {
 		return err
@@ -98,7 +96,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 	}
 
 	// Validate JSON-RPC version
-	if aux.JSONRPC != "2.0" {
+	if aux.JSONRPC != jsonRPCVersion {
 		return fmt.Errorf("invalid JSON-RPC version: %s", aux.JSONRPC)
 	}
 	r.jsonrpc = aux.JSONRPC
@@ -117,7 +115,8 @@ func (r *Response) parseFromBytes(data []byte) error {
 	// Parse the ID field
 	r.rawID = aux.ID
 
-	// Also unmarshal the ID, as the ID field is imperative for use of the Response
+	// Also unmarshal the ID, as the ID field is imperative for use of the
+	// Response
 	if err := r.unmarshalID(); err != nil {
 		return fmt.Errorf("failed to unmarshal ID: %w", err)
 	}
@@ -215,8 +214,8 @@ func (r *Response) Equals(other *Response) bool {
 }
 
 // IDOrNil returns the unmarshaled ID, or nil if unmarshaling fails.
-// The ID is unmarshaled lazily on first call and cached for subsequent calls.
-// This method is safe for concurrent use.
+// The ID is unmarshaled lazily on first call and cached for subsequent
+// calls. This method is safe for concurrent use.
 func (r *Response) IDOrNil() any {
 	r.idOnce.Do(func() {
 		// Ignore error - validation happens during decode
@@ -227,7 +226,7 @@ func (r *Response) IDOrNil() any {
 }
 
 // IDRaw returns the unmarshaled ID, or nil if unmarshaling fails.
-// Deprecated: Use IDOrNil instead for clearer intent. See MIGRATION.md for details. Will be removed in v2.0.
+// Deprecated: Use IDOrNil instead for clearer intent. See MIGRATION.md for details.
 func (r *Response) IDRaw() any {
 	return r.IDOrNil()
 }
@@ -244,6 +243,38 @@ func (r *Response) IDString() string {
 	default:
 		return ""
 	}
+}
+
+// isEmptyResult checks if a raw JSON result is considered empty.
+// Returns true for: empty slice, null, "0x", "", [], {}
+func isEmptyResult(result json.RawMessage) bool {
+	resultBytes := len(result)
+	if resultBytes == 0 {
+		return true
+	}
+
+	// Check for "0x" (hex zero value)
+	if resultBytes == 4 && result[0] == '"' && result[1] == '0' &&
+		result[2] == 'x' && result[3] == '"' {
+		return true
+	}
+
+	// Check for null
+	if resultBytes == 4 && result[0] == 'n' && result[1] == 'u' &&
+		result[2] == 'l' && result[3] == 'l' {
+		return true
+	}
+
+	// Check for empty string, array, or object
+	if resultBytes == 2 {
+		if (result[0] == '"' && result[1] == '"') ||
+			(result[0] == '[' && result[1] == ']') ||
+			(result[0] == '{' && result[1] == '}') {
+			return true
+		}
+	}
+
+	return false
 }
 
 // IsEmpty returns whether the JSON-RPC response can be considered empty.
@@ -269,21 +300,7 @@ func (r *Response) IsEmpty() bool {
 	}
 
 	emptyError := r.err.IsEmpty()
-
-	// A JSON-RPC response result id considered empty if it's empty or contains a zero hex value,
-	// a null value, an empty string, an empty array, or an empty object.
-	var emptyResult bool
-	resultBytes := len(r.result)
-	if resultBytes == 0 ||
-		(resultBytes == 4 && r.result[0] == '"' && r.result[1] == '0' && r.result[2] == 'x' && r.result[3] == '"') ||
-		(resultBytes == 4 && r.result[0] == 'n' && r.result[1] == 'u' && r.result[2] == 'l' && r.result[3] == 'l') ||
-		(resultBytes == 2 && r.result[0] == '"' && r.result[1] == '"') ||
-		(resultBytes == 2 && r.result[0] == '[' && r.result[1] == ']') ||
-		(resultBytes == 2 && r.result[0] == '{' && r.result[1] == '}') {
-		emptyResult = true
-	} else {
-		emptyResult = false
-	}
+	emptyResult := isEmptyResult(r.result)
 
 	return emptyError && emptyResult
 }
@@ -317,7 +334,8 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	errVal := r.err
 
 	// Retrieve the result
-	// Since it is already a JSON encoded []byte, we wrap it as json.RawMessage to prevent sonic from re-encoding it.
+	// Since it is already a JSON encoded []byte, we wrap it as json.RawMessage to prevent sonic
+	// from re-encoding it.
 	var result json.RawMessage
 	if len(r.result) > 0 {
 		result = json.RawMessage(r.result)
@@ -402,7 +420,7 @@ func (r *Response) Validate() error {
 		return errors.New("response is nil")
 	}
 
-	if r.jsonrpc != "2.0" {
+	if r.jsonrpc != jsonRPCVersion {
 		return fmt.Errorf("invalid jsonrpc version: %s", r.jsonrpc)
 	}
 
@@ -425,7 +443,7 @@ func (r *Response) Validate() error {
 // DecodeResponse parses and returns a new Response from a byte slice.
 func DecodeResponse(data []byte) (*Response, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, fmt.Errorf("empty data")
+		return nil, errors.New(errEmptyData)
 	}
 
 	resp := &Response{}
@@ -466,7 +484,7 @@ func NewResponse(id any, result any) (*Response, error) {
 	}
 
 	return &Response{
-		jsonrpc: "2.0",
+		jsonrpc: jsonRPCVersion,
 		id:      id,
 		result:  resultBytes,
 	}, nil
@@ -475,7 +493,7 @@ func NewResponse(id any, result any) (*Response, error) {
 // NewResponseFromRaw creates a JSON-RPC 2.0 response with a raw result.
 func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
 	return &Response{
-		jsonrpc: "2.0",
+		jsonrpc: jsonRPCVersion,
 		id:      id,
 		result:  rawResult,
 	}, nil
@@ -484,7 +502,7 @@ func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
 // NewErrorResponse creates a JSON-RPC 2.0 error response.
 func NewErrorResponse(id any, err *Error) *Response {
 	return &Response{
-		jsonrpc: "2.0",
+		jsonrpc: jsonRPCVersion,
 		id:      id,
 		err:     err,
 	}

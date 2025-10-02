@@ -11,19 +11,44 @@ import (
 // Benchmark payloads of different sizes
 var (
 	smallRequestJSON  = []byte(`{"jsonrpc":"2.0","id":1,"method":"ping","params":null}`)
-	mediumRequestJSON = []byte(`{"jsonrpc":"2.0","id":42,"method":"updateUser","params":{"userId":12345,"name":"Alice Johnson","email":"alice@example.com","preferences":{"theme":"dark","language":"en","notifications":true}}}`)
-	largeRequestJSON  = []byte(`{"jsonrpc":"2.0","id":999,"method":"processData","params":{"items":[` + strings.Repeat(`{"id":1,"value":"data","metadata":{"key":"value"}},`, 100) + `{"id":101,"value":"final"}]}}`)
+	mediumRequestJSON = []byte(
+		`{"jsonrpc":"2.0","id":42,"method":"updateUser","params":{"userId":12345,` +
+			`"name":"Alice Johnson","email":"alice@example.com",` +
+			`"preferences":{"theme":"dark","language":"en","notifications":true}}}`,
+	)
+	largeRequestJSON = []byte(
+		`{"jsonrpc":"2.0","id":999,"method":"processData","params":{"items":[` +
+			strings.Repeat(`{"id":1,"value":"data","metadata":{"key":"value"}},`, 100) +
+			`{"id":101,"value":"final"}]}}`,
+	)
 
 	smallResponseJSON  = []byte(`{"jsonrpc":"2.0","id":1,"result":"pong"}`)
-	mediumResponseJSON = []byte(`{"jsonrpc":"2.0","id":42,"result":{"userId":12345,"name":"Alice Johnson","email":"alice@example.com","status":"active","lastLogin":"2024-01-15T10:30:00Z"}}`)
-	largeResponseJSON  = []byte(`{"jsonrpc":"2.0","id":999,"result":{"items":[` + strings.Repeat(`{"id":1,"processed":true,"value":"result","timestamp":"2024-01-15T10:30:00Z"},`, 100) + `{"id":101,"processed":true}]}}`)
+	mediumResponseJSON = []byte(
+		`{"jsonrpc":"2.0","id":42,"result":{"userId":12345,"name":"Alice Johnson",` +
+			`"email":"alice@example.com","status":"active","lastLogin":"2024-01-15T10:30:00Z"}}`,
+	)
+	largeResponseJSON = []byte(
+		`{"jsonrpc":"2.0","id":999,"result":{"items":[` +
+			strings.Repeat(
+				`{"id":1,"processed":true,"value":"result","timestamp":"2024-01-15T10:30:00Z"},`,
+				100,
+			) + `{"id":101,"processed":true}]}}`,
+	)
 
-	errorResponseJSON = []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found","data":{"method":"unknownMethod","available":["ping","echo","status"]}}}`)
+	errorResponseJSON = []byte(
+		`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found",` +
+			`"data":{"method":"unknownMethod","available":["ping","echo","status"]}}}`,
+	)
 )
 
 // BenchmarkDecodeRequest benchmarks request decoding with different payload sizes
-// TODO: Add comparison benchmarks for alternative JSON parsers (e.g., encoding/json, goccy/go-json)
-// TODO: Add sub-benchmarks for different ID types (string, int, float) to measure ID parsing overhead
+// TODO: Add comparison benchmarks for alternative JSON parsers
+//
+//	(e.g., encoding/json, goccy/go-json)
+//
+// TODO: Add sub-benchmarks for different ID types (string, int, float)
+//
+//	to measure ID parsing overhead
 func BenchmarkDecodeRequest(b *testing.B) {
 	b.Run("Small", func(b *testing.B) {
 		b.ReportAllocs()
@@ -298,32 +323,32 @@ func BenchmarkDecodeResponseFromReader(b *testing.B) {
 
 func makeBatchRequestJSON(count int) []byte {
 	var buf bytes.Buffer
-	buf.WriteByte('[')
+	_ = buf.WriteByte('[')
 	for i := 0; i < count; i++ {
 		if i > 0 {
-			buf.WriteByte(',')
+			_ = buf.WriteByte(',')
 		}
-		buf.WriteString(`{"jsonrpc":"2.0","id":`)
-		buf.WriteString(string(rune('0' + (i % 10))))
-		buf.WriteString(`,"method":"test","params":[`)
-		buf.WriteString(string(rune('0' + (i % 10))))
-		buf.WriteString(`]}`)
+		_, _ = buf.WriteString(`{"jsonrpc":"2.0","id":`)
+		_, _ = buf.WriteString(string(rune('0' + (i % 10))))
+		_, _ = buf.WriteString(`,"method":"test","params":[`)
+		_, _ = buf.WriteString(string(rune('0' + (i % 10))))
+		_, _ = buf.WriteString(`]}`)
 	}
-	buf.WriteByte(']')
+	_ = buf.WriteByte(']')
 	return buf.Bytes()
 }
 
 func makeBatchResponseJSON(count int) []byte {
 	var buf bytes.Buffer
-	buf.WriteByte('[')
+	_ = buf.WriteByte('[')
 	for i := 0; i < count; i++ {
 		if i > 0 {
-			buf.WriteByte(',')
+			_ = buf.WriteByte(',')
 		}
-		buf.WriteString(`{"jsonrpc":"2.0","id":`)
-		buf.WriteString(string(rune('0' + (i % 10))))
-		buf.WriteString(`,"result":"ok"}`)
+		_, _ = buf.WriteString(`{"jsonrpc":"2.0","id":`)
+		_, _ = buf.WriteString(string(rune('0' + (i % 10))))
+		_, _ = buf.WriteString(`,"result":"ok"}`)
 	}
-	buf.WriteByte(']')
+	_ = buf.WriteByte(']')
 	return buf.Bytes()
 }

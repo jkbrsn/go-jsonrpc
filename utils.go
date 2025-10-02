@@ -1,5 +1,3 @@
-// Package jsonrpc provides a Go implementation of the JSON-RPC 2.0 specification, as well as tools
-// to parse and work with JSON-RPC requests and responses.
 package jsonrpc
 
 import (
@@ -13,9 +11,11 @@ import (
 
 // revive:disable:add-constant makes sense here
 
-// formatFloat64ID formats a float64 ID as a string, removing trailing zeroes while preserving ".0" for whole numbers.
+// formatFloat64ID formats a float64 ID as a string, removing trailing
+// zeroes while preserving ".0" for whole numbers.
 //
-// This function supports fractional JSON-RPC IDs, which is a deviation from the JSON-RPC 2.0 specification.
+// This function supports fractional JSON-RPC IDs, which is a deviation
+// from the JSON-RPC 2.0 specification.
 // The spec states that ID numbers "SHOULD NOT contain fractional parts" (Section 5),
 // but this library allows them for flexibility and compatibility.
 //

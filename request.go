@@ -4,7 +4,8 @@ package jsonrpc
 
 import (
 	"bytes"
-	"encoding/json" // Used for json.RawMessage type, which provides interop with stdlib encoding/json
+	// Used for json.RawMessage type, which provides interop with stdlib encoding/json
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -65,6 +66,65 @@ func (r *Request) String() string {
 	return fmt.Sprintf("ID: %v, Method: %s", r.ID, r.Method)
 }
 
+// unmarshalRequestID unmarshals and normalizes the ID field from raw JSON.
+func unmarshalRequestID(rawID json.RawMessage) (any, error) {
+	if len(rawID) == 0 {
+		return nil, nil
+	}
+
+	var id any
+	if err := sonic.Unmarshal(rawID, &id); err != nil {
+		return nil, fmt.Errorf("invalid id field: %w", err)
+	}
+
+	// If the value is "null", id will be nil
+	if id == nil {
+		return nil, nil
+	}
+
+	switch v := id.(type) {
+	case float64:
+		// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
+		if v != float64(int64(v)) {
+			return v, nil
+		}
+		return int64(v), nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		return v, nil
+	default:
+		return nil, errors.New("id field must be a string or a number")
+	}
+}
+
+// unmarshalRequestParams unmarshals and validates the params field from raw JSON.
+func unmarshalRequestParams(rawParams json.RawMessage) (any, error) {
+	if len(rawParams) == 0 {
+		return nil, nil
+	}
+
+	var params any
+	if err := sonic.Unmarshal(rawParams, &params); err != nil {
+		return nil, fmt.Errorf("invalid params field: %w", err)
+	}
+
+	// Accept only arrays or objects.
+	switch params.(type) {
+	case []any, map[string]any, nil:
+		return params, nil
+	case string:
+		// Treat empty strings as nil
+		if params != "" {
+			return nil, errors.New("params field must be either an array, an object, or nil")
+		}
+		return nil, nil
+	default:
+		return nil, errors.New("params field must be either an array, an object, or nil")
+	}
+}
+
 // UnmarshalJSON unmarshals a JSON-RPC request. The function takes two custom actions; sets the
 // JSON-RPC version to 2.0 and unmarshals the ID separately, to handle both string and float64 IDs.
 func (r *Request) UnmarshalJSON(data []byte) error {
@@ -81,8 +141,8 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if aux.JSONRPC != "2.0" {
-		return fmt.Errorf("jsonrpc field is required to be exactly \"2.0\"")
+	if aux.JSONRPC != jsonRPCVersion {
+		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
 	}
 	r.JSONRPC = aux.JSONRPC
 
@@ -92,61 +152,18 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	r.Method = aux.Method
 
 	// Unmarshal and validate the id field
-	if len(aux.ID) > 0 {
-		var id any
-		if err := sonic.Unmarshal(aux.ID, &id); err != nil {
-			return fmt.Errorf("invalid id field: %w", err)
-		}
-		// If the value is "null", id will be nil
-		if id == nil {
-			r.ID = nil
-		} else {
-			switch v := id.(type) {
-			case float64:
-				// JSON numbers are unmarshalled as float64, so an explicit integer check is needed
-				if v != float64(int64(v)) {
-					r.ID = v
-				} else {
-					r.ID = int64(v)
-				}
-			case string:
-				if v == "" {
-					r.ID = nil
-				} else {
-					r.ID = v
-				}
-			default:
-				return errors.New("id field must be a string or a number")
-			}
-		}
-	} else {
-		r.ID = nil
+	id, err := unmarshalRequestID(aux.ID)
+	if err != nil {
+		return err
 	}
+	r.ID = id
 
-	// Unmarshal the params field
-	if len(aux.Params) > 0 {
-		var rawParams any
-		if err := sonic.Unmarshal(aux.Params, &rawParams); err != nil {
-			return fmt.Errorf("invalid params field: %w", err)
-		}
-		// Accept only arrays or objects.
-		switch rawParams.(type) {
-		case []any, map[string]any, nil:
-			r.Params = rawParams
-		case string:
-			// Treat empty strings as nil
-			if rawParams == "" {
-				r.Params = nil
-			} else {
-				return errors.New("params field must be either an array, an object, or nil")
-			}
-		default:
-			return errors.New("params field must be either an array, an object, or nil")
-		}
-	} else {
-		// You may choose to set this to nil or an empty value.
-		r.Params = nil
+	// Unmarshal and validate the params field
+	params, err := unmarshalRequestParams(aux.Params)
+	if err != nil {
+		return err
 	}
+	r.Params = params
 
 	return nil
 }
@@ -156,7 +173,7 @@ func (r *Request) Validate() error {
 	if r == nil {
 		return errors.New("request is nil")
 	}
-	if r.JSONRPC != "2.0" {
+	if r.JSONRPC != jsonRPCVersion {
 		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
 	}
 	if r.Method == "" {
@@ -185,7 +202,7 @@ func (r *Request) Validate() error {
 // NewRequest creates a JSON-RPC 2.0 request with an auto-generated ID.
 func NewRequest(method string, params any) *Request {
 	return &Request{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		ID:      RandomJSONRPCID(),
 		Method:  method,
 		Params:  params,
@@ -195,7 +212,7 @@ func NewRequest(method string, params any) *Request {
 // NewRequestWithID creates a JSON-RPC 2.0 request with a specific ID.
 func NewRequestWithID(method string, params any, id any) *Request {
 	return &Request{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		ID:      id,
 		Method:  method,
 		Params:  params,
@@ -205,7 +222,7 @@ func NewRequestWithID(method string, params any, id any) *Request {
 // NewNotification creates a JSON-RPC 2.0 notification (request without ID).
 func NewNotification(method string, params any) *Request {
 	return &Request{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		Method:  method,
 		Params:  params,
 	}
@@ -240,7 +257,7 @@ func (r *Request) UnmarshalParams(dst any) error {
 // DecodeRequest parses a JSON-RPC request from a byte slice.
 func DecodeRequest(data []byte) (*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, fmt.Errorf("empty data")
+		return nil, errors.New(errEmptyData)
 	}
 	req := &Request{}
 	err := req.UnmarshalJSON(data)
