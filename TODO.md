@@ -2,6 +2,9 @@
 
 ## next minor
 
+- Improve upon `Makefile`
+- Add CI tests GitHub workflow
+- Add `.golangci.yml` configuration
 - Consider functions to unmarshal individual fields of Response (and Request?)
 - Add dynamic options
   - Skip forcing "jsonrpc: 2.0" (for either Request or Response or both)
