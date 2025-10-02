@@ -461,7 +461,7 @@ func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, err
 	if body == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
-	defer body.Close()
+	defer body.Close() // nolint:errcheck
 
 	return DecodeResponseFromReader(body, expectedSize)
 }

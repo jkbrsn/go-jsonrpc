@@ -132,7 +132,10 @@ func ExampleResponse_UnmarshalResult_primitives() {
 	resp, _ := DecodeResponse(jsonData)
 
 	var strResult string
-	resp.UnmarshalResult(&strResult)
+	if err := resp.UnmarshalResult(&strResult); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	fmt.Printf("String: %s\n", strResult)
 
 	// Number result
@@ -140,7 +143,10 @@ func ExampleResponse_UnmarshalResult_primitives() {
 	resp, _ = DecodeResponse(jsonData)
 
 	var intResult int
-	resp.UnmarshalResult(&intResult)
+	if err := resp.UnmarshalResult(&intResult); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	fmt.Printf("Number: %d\n", intResult)
 
 	// Boolean result
@@ -148,7 +154,10 @@ func ExampleResponse_UnmarshalResult_primitives() {
 	resp, _ = DecodeResponse(jsonData)
 
 	var boolResult bool
-	resp.UnmarshalResult(&boolResult)
+	if err := resp.UnmarshalResult(&boolResult); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	fmt.Printf("Boolean: %t\n", boolResult)
 
 	// Output:
@@ -179,9 +188,9 @@ func ExampleResponse_UnmarshalError() {
 func ExampleNewBatchRequest() {
 	methods := []string{"sum", "subtract", "getUser"}
 	params := []any{
-		[]any{1, 2, 3},              // positional params for sum
-		[]any{10, 5},                // positional params for subtract
-		map[string]any{"id": 123},   // named params for getUser
+		[]any{1, 2, 3},            // positional params for sum
+		[]any{10, 5},              // positional params for subtract
+		map[string]any{"id": 123}, // named params for getUser
 	}
 
 	reqs, err := NewBatchRequest(methods, params)
