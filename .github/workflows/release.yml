@@ -87,10 +87,6 @@ jobs:
         shell: bash
         run: go test -mod=readonly ./... -count=1 -race
 
-      - name: Build
-        shell: bash
-        run: make build
-
       - name: Compute tag (final or next -rc.N from input)
         id: compute_tag
         shell: bash
