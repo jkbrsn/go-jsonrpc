@@ -1,6 +1,6 @@
-# go-jsonrpc [![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs] [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
+# jsonrpc [![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs] [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)][license]
 
-[godocs]: http://godoc.org/github.com/jkbrsn/go-jsonrpc
+[godocs]: http://godoc.org/github.com/jkbrsn/jsonrpc
 [license]: /LICENSE
 
 A JSON-RPC 2.0 implementation in Go.
@@ -18,7 +18,7 @@ Attempts to conform fully to the [JSON-RPC 2.0 Specification](https://www.jsonrp
 ## Install
 
 ```bash
-go get github.com/jkbrsn/go-jsonrpc
+go get github.com/jkbrsn/jsonrpc
 ```
 
 ## Usage

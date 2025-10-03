@@ -153,4 +153,4 @@ resp, err := jsonrpc.DecodeResponse(data)
 
 ## Need Help?
 
-If you encounter migration issues, please open an issue at https://github.com/jkbrsn/go-jsonrpc/issues
+If you encounter migration issues, please open an issue at https://github.com/jkbrsn/jsonrpc/issues

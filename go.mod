@@ -1,4 +1,4 @@
-module github.com/jkbrsn/go-jsonrpc
+module github.com/jkbrsn/jsonrpc
 
 go 1.25.1
 
