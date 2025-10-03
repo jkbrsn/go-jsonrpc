@@ -22,14 +22,14 @@ env:
 
 jobs:
   version-bump-check:
-    name: VERSION check
+    name: Version bump check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: VERSION bump check vs latest FINAL tag
+      - name: Version bump check vs latest FINAL tag
         shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +100,6 @@ jobs:
           # Parse input: base X.Y.Z and optional rc number if provided
           if [[ "$INPUT_NO_V" =~ ^([0-9]+(\.[0-9]+){2})(-rc\.?([0-9]+))?([+][0-9A-Za-z\.-]+)?$ ]]; then
             BASE_VERSION="${BASH_REMATCH[1]}"
-            HAS_RC="${BASH_REMATCH[3]}"
             RC_NUM="${BASH_REMATCH[4]:-}"
           else
             echo "::error::Input must be SemVer like 0.1.2, 1.2.3-rc.1, or v1.2.3"
@@ -155,7 +154,6 @@ jobs:
           echo "version=$BASE_VERSION"      >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"                   >> "$GITHUB_OUTPUT"
           echo "is_prerelease=$IS_PRE"      >> "$GITHUB_OUTPUT"
-          echo "VERSION=$BASE_VERSION"      >> "$GITHUB_ENV"
 
           echo "Computed tag: $TAG (prerelease=$IS_PRE)"
 
