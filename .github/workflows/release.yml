@@ -183,9 +183,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name:   ${{ steps.compute_tag.outputs.tag }}
-          name:       hyperliquid-l1-gateway ${{ steps.compute_tag.outputs.tag }}
+          name:       jsonrpc ${{ steps.compute_tag.outputs.tag }}
           body:       ${{ steps.git-cliff.outputs.content }}
-          files:      ./bin/hyperliquid-l1-gateway
           prerelease: ${{ steps.compute_tag.outputs.is_prerelease }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
