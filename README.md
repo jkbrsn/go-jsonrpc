@@ -169,6 +169,22 @@ reqs, err := jsonrpc.NewBatchNotification(
 )
 ```
 
+## Release Process
+
+See [release.yml](.github/workflows/release.yml) for the release process specifics.
+
+### Release Workflow Behavior
+
+The Manual Release workflow enforces consistent versioning rules:
+
+- `version = 1.5.0`, `prerelease = true` → creates `v1.5.0-rc.1` (or the next `-rc.N` if others exist).
+- `version = 1.5.0-rc.7`, `prerelease = true` → creates exactly `v1.5.0-rc.7` (if not already tagged).
+- `version = v1.5.0`, `prerelease = false` → creates final `v1.5.0` (allowed even if prereleases exist).
+- If final `v1.5.0` already exists → both `prerelease = true` and final runs for `1.5.0` are blocked.
+- Base version bumping → the base `X.Y.Z` must always be strictly greater than the latest existing final tag in the repo.
+
+This means you can iterate with `prerelease = true` and later “promote” the same base to a final, but you cannot reuse or downgrade existing finals.
+
 ## Migration Guide
 
 If you're upgrading from earlier versions, some function names have changed to follow Go conventions more closely. See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
