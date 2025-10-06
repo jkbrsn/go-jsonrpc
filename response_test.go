@@ -1106,3 +1106,237 @@ func TestResponse_Unmarshal(t *testing.T) {
 		assert.Contains(t, err.Error(), "destination pointer cannot be nil")
 	})
 }
+
+func TestResponse_WriteTo(t *testing.T) {
+	t.Run("Response with result and string ID", func(t *testing.T) {
+		resp, err := NewResponse("test-id", map[string]string{"foo": "bar"})
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "test-id", out["id"])
+		assert.Equal(t, map[string]any{"foo": "bar"}, out["result"])
+	})
+
+	t.Run("Response with result and integer ID", func(t *testing.T) {
+		resp, err := NewResponse(int64(42), "success")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(42), out["id"])
+		assert.Equal(t, "success", out["result"])
+	})
+
+	t.Run("Response with result and float ID", func(t *testing.T) {
+		resp, err := NewResponse(float64(3.14), true)
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(3.14), out["id"])
+		assert.Equal(t, true, out["result"])
+	})
+
+	t.Run("Response with result and nil ID", func(t *testing.T) {
+		resp, err := NewResponse(nil, "data")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Nil(t, out["id"])
+		assert.Equal(t, "data", out["result"])
+	})
+
+	t.Run("Response with error", func(t *testing.T) {
+		resp := NewErrorResponse("error-id", &Error{Code: -32000, Message: "test error"})
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "error-id", out["id"])
+
+		errMap, ok := out["error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, float64(-32000), errMap["code"])
+		assert.Equal(t, "test error", errMap["message"])
+	})
+
+	t.Run("Response with rawError", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc:  "2.0",
+			id:       int64(1),
+			rawError: []byte(`{"code":-32601,"message":"Method not found"}`),
+		}
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(1), out["id"])
+
+		errMap, ok := out["error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, float64(-32601), errMap["code"])
+		assert.Equal(t, "Method not found", errMap["message"])
+	})
+
+	t.Run("Response with rawID", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`"raw-id"`),
+			result:  json.RawMessage(`"result"`),
+		}
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "raw-id", out["id"])
+		assert.Equal(t, "result", out["result"])
+	})
+
+	t.Run("WriteTo produces same output as MarshalJSON", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			resp *Response
+		}{
+			{
+				name: "Response with result",
+				resp: func() *Response {
+					r, _ := NewResponse(int64(1), map[string]string{"foo": "bar"})
+					return r
+				}(),
+			},
+			{
+				name: "Response with error",
+				resp: NewErrorResponse("error-id", &Error{Code: -32000, Message: "test"}),
+			},
+			{
+				name: "Response with nil ID",
+				resp: func() *Response {
+					r, _ := NewResponse(nil, "result")
+					return r
+				}(),
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				n, err := tc.resp.WriteTo(&buf)
+				require.NoError(t, err)
+				assert.Greater(t, n, int64(0))
+
+				marshaled, err := tc.resp.MarshalJSON()
+				require.NoError(t, err)
+
+				assert.JSONEq(t, string(marshaled), buf.String())
+			})
+		}
+	})
+
+	t.Run("Large response with WriteTo", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data here",
+			}
+		}
+
+		resp, err := NewResponse(int64(1), largeData)
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(10000))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(1), out["id"])
+
+		resultSlice, ok := out["result"].([]any)
+		require.True(t, ok)
+		assert.Len(t, resultSlice, 1000)
+	})
+
+	t.Run("Invalid response validation fails", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc: "1.0",
+			id:      int64(1),
+			result:  json.RawMessage(`"test"`),
+		}
+
+		var buf bytes.Buffer
+		_, err := resp.WriteTo(&buf)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid jsonrpc version")
+	})
+
+	t.Run("WriteTo returns correct byte count", func(t *testing.T) {
+		resp, err := NewResponse(int64(1), "test")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(buf.Len()), n)
+	})
+}

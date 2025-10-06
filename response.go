@@ -459,6 +459,113 @@ func (r *Response) Validate() error {
 	return nil
 }
 
+// WriteTo implements io.WriterTo for efficient streaming serialization without buffering
+// the entire response in memory. This is particularly beneficial for large responses
+// (e.g., getLogs with 10k+ events) as it significantly reduces memory pressure.
+//
+// The method writes the JSON-RPC response directly to the provided writer, streaming
+// each field without intermediate allocations. For large result payloads, this avoids
+// the memory overhead of MarshalJSON which allocates a full buffer before writing.
+//
+// Example usage:
+//
+//	var buf bytes.Buffer
+//	n, err := response.WriteTo(&buf)
+//	// or directly to http.ResponseWriter
+//	n, err := response.WriteTo(w)
+func (r *Response) WriteTo(w io.Writer) (n int64, err error) {
+	if err := r.Validate(); err != nil {
+		return 0, err
+	}
+
+	var total int64
+
+	// Write opening brace and jsonrpc field
+	if err = writeString(w, `{"jsonrpc":"2.0","id":`, &total); err != nil {
+		return total, err
+	}
+
+	// Write ID field
+	idBytes, err := r.getIDBytes()
+	if err != nil {
+		return total, err
+	}
+	if err = writeBytes(w, idBytes, &total); err != nil {
+		return total, err
+	}
+
+	// Write either error or result field
+	if r.err != nil || len(r.rawError) > 0 {
+		if err = r.writeErrorField(w, &total); err != nil {
+			return total, err
+		}
+	} else {
+		if err = r.writeResultField(w, &total); err != nil {
+			return total, err
+		}
+	}
+
+	// Write closing brace
+	if err = writeString(w, `}`, &total); err != nil {
+		return total, err
+	}
+
+	return total, nil
+}
+
+// writeString writes a string to the writer and updates the total byte count
+func writeString(w io.Writer, s string, total *int64) error {
+	return writeBytes(w, []byte(s), total)
+}
+
+// writeBytes writes bytes to the writer and updates the total byte count
+func writeBytes(w io.Writer, b []byte, total *int64) error {
+	written, err := w.Write(b)
+	*total += int64(written)
+	return err
+}
+
+// getIDBytes returns the marshaled ID bytes
+func (r *Response) getIDBytes() ([]byte, error) {
+	if r.id != nil {
+		return sonic.Marshal(r.id)
+	}
+	if r.rawID != nil {
+		return r.rawID, nil
+	}
+	return []byte("null"), nil
+}
+
+// writeErrorField writes the error field to the writer
+func (r *Response) writeErrorField(w io.Writer, total *int64) error {
+	if err := writeString(w, `,"error":`, total); err != nil {
+		return err
+	}
+
+	errorBytes, err := r.getErrorBytes()
+	if err != nil {
+		return err
+	}
+
+	return writeBytes(w, errorBytes, total)
+}
+
+// getErrorBytes returns the marshaled error bytes
+func (r *Response) getErrorBytes() ([]byte, error) {
+	if r.err != nil {
+		return sonic.Marshal(r.err)
+	}
+	return r.rawError, nil
+}
+
+// writeResultField writes the result field to the writer
+func (r *Response) writeResultField(w io.Writer, total *int64) error {
+	if err := writeString(w, `,"result":`, total); err != nil {
+		return err
+	}
+	return writeBytes(w, r.result, total)
+}
+
 // DecodeResponse parses and returns a new Response from a byte slice.
 func DecodeResponse(data []byte) (*Response, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
