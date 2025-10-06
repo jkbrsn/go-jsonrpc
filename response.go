@@ -451,8 +451,13 @@ func (r *Response) Validate() error {
 		return fmt.Errorf("invalid jsonrpc version: %s", r.jsonrpc)
 	}
 
-	switch r.id.(type) {
+	// Normalize int to int64 for consistency
+	switch v := r.id.(type) {
 	case nil, string, int64, float64:
+		// Already in correct format
+	case int:
+		// Convert platform-dependent int to int64
+		r.id = int64(v)
 	default:
 		return errors.New("id field must be a string or a number")
 	}

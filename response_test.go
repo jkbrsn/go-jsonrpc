@@ -1067,7 +1067,7 @@ func TestResponse_LazyUnmarshalOnce(t *testing.T) {
 
 func TestResponse_Unmarshal(t *testing.T) {
 	t.Run("Unmarshal response with result", func(t *testing.T) {
-		resp, err := NewResponse(int64(1), map[string]string{"foo": "bar"})
+		resp, err := NewResponse(1, map[string]string{"foo": "bar"})
 		require.NoError(t, err)
 
 		var out map[string]any
@@ -1127,7 +1127,7 @@ func TestResponse_WriteTo(t *testing.T) {
 	})
 
 	t.Run("Response with result and integer ID", func(t *testing.T) {
-		resp, err := NewResponse(int64(42), "success")
+		resp, err := NewResponse(42, "success")
 		require.NoError(t, err)
 
 		var buf bytes.Buffer
@@ -1255,7 +1255,7 @@ func TestResponse_WriteTo(t *testing.T) {
 			{
 				name: "Response with result",
 				resp: func() *Response {
-					r, _ := NewResponse(int64(1), map[string]string{"foo": "bar"})
+					r, _ := NewResponse(1, map[string]string{"foo": "bar"})
 					return r
 				}(),
 			},
@@ -1296,7 +1296,7 @@ func TestResponse_WriteTo(t *testing.T) {
 			}
 		}
 
-		resp, err := NewResponse(int64(1), largeData)
+		resp, err := NewResponse(1, largeData)
 		require.NoError(t, err)
 
 		var buf bytes.Buffer
@@ -1330,7 +1330,7 @@ func TestResponse_WriteTo(t *testing.T) {
 	})
 
 	t.Run("WriteTo returns correct byte count", func(t *testing.T) {
-		resp, err := NewResponse(int64(1), "test")
+		resp, err := NewResponse(1, "test")
 		require.NoError(t, err)
 
 		var buf bytes.Buffer
@@ -1906,7 +1906,7 @@ func TestResponse_Size(t *testing.T) {
 	})
 
 	t.Run("Size of response with integer ID", func(t *testing.T) {
-		resp, err := NewResponse(int64(42), "data")
+		resp, err := NewResponse(42, "data")
 		require.NoError(t, err)
 
 		size := resp.Size()
@@ -1936,7 +1936,7 @@ func TestResponse_Size(t *testing.T) {
 	})
 
 	t.Run("Size of error response", func(t *testing.T) {
-		resp := NewErrorResponse(int64(1), &Error{Code: -32000, Message: "Method not found"})
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "Method not found"})
 
 		size := resp.Size()
 		marshaled, err := resp.MarshalJSON()
@@ -1954,7 +1954,7 @@ func TestResponse_Size(t *testing.T) {
 			}
 		}
 
-		resp, err := NewResponse(int64(1), largeData)
+		resp, err := NewResponse(1, largeData)
 		require.NoError(t, err)
 
 		size := resp.Size()
@@ -2002,7 +2002,7 @@ func TestResponse_Size(t *testing.T) {
 	})
 
 	t.Run("Size with error containing Data", func(t *testing.T) {
-		resp := NewErrorResponse(int64(1), &Error{
+		resp := NewErrorResponse(1, &Error{
 			Code:    -32000,
 			Message: "Server error",
 			Data:    map[string]string{"detail": "additional information"},
@@ -2023,7 +2023,7 @@ func TestResponse_Size(t *testing.T) {
 			{
 				name: "eth_blockNumber response",
 				resp: func() *Response {
-					r, _ := NewResponse(int64(1), "0x1234567")
+					r, _ := NewResponse(1, "0x1234567")
 					return r
 				}(),
 				minSize: 40,
@@ -2081,7 +2081,7 @@ func TestResponse_Size(t *testing.T) {
 	})
 
 	t.Run("Size is consistent across multiple calls", func(t *testing.T) {
-		resp, err := NewResponse(int64(1), "data")
+		resp, err := NewResponse(1, "data")
 		require.NoError(t, err)
 
 		size1 := resp.Size()
@@ -2090,5 +2090,49 @@ func TestResponse_Size(t *testing.T) {
 
 		assert.Equal(t, size1, size2)
 		assert.Equal(t, size2, size3)
+	})
+}
+
+func TestResponse_IntToInt64Normalization(t *testing.T) {
+	t.Run("int ID is normalized to int64", func(t *testing.T) {
+		// Use plain int literal
+		resp, err := NewResponse(42, "data")
+		require.NoError(t, err)
+
+		// Should be normalized to int64 after validation
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Verify it marshals correctly
+		assert.Contains(t, string(marshaled), `"id":42`)
+
+		// Verify IDOrNil returns int64
+		id := resp.IDOrNil()
+		assert.Equal(t, int64(42), id)
+		assert.IsType(t, int64(0), id)
+	})
+
+	t.Run("int ID in NewErrorResponse", func(t *testing.T) {
+		resp := NewErrorResponse(123, &Error{Code: -32000, Message: "error"})
+
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.Contains(t, string(marshaled), `"id":123`)
+
+		id := resp.IDOrNil()
+		assert.Equal(t, int64(123), id)
+		assert.IsType(t, int64(0), id)
+	})
+
+	t.Run("WriteTo works with int ID", func(t *testing.T) {
+		resp, err := NewResponse(999, "test")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		assert.Contains(t, buf.String(), `"id":999`)
 	})
 }
