@@ -758,6 +758,107 @@ func (r *Response) Clone() (*Response, error) {
 	return clone, nil
 }
 
+const (
+	// Size estimation constants
+	jsonStructureOverhead  = 35 // {"jsonrpc":"2.0","id":,"result":}
+	errorStructureOverhead = 20 // {"code":,"message":""}
+	errorDataEstimate      = 50 // rough estimate for error data field
+	float64SizeEstimate    = 12 // float64 average size (range: 5-23 bytes)
+	nullSize               = 4  // "null"
+	decimalBase            = 10 // base 10 for digit counting
+)
+
+// Size returns the approximate serialized size of the response in bytes.
+// This is useful for metrics, logging, and deciding whether to buffer or stream responses.
+//
+// The calculation includes:
+//   - JSON structure overhead (opening/closing braces, field names, colons, commas)
+//   - ID field size (or "null" if not present)
+//   - Error field size (if present)
+//   - Result field size (if present)
+//
+// The returned size is an approximation and may differ slightly from the actual
+// marshaled size due to formatting differences, but is accurate enough for
+// practical purposes like logging and metrics.
+//
+// Example usage:
+//
+//	if response.Size() > 1024*1024 {
+//	    log.Warn("Large response detected", "size", response.Size())
+//	}
+func (r *Response) Size() int {
+	if r == nil {
+		return 0
+	}
+
+	size := jsonStructureOverhead
+	size += r.idSize()
+	size += r.errorSize()
+	size += r.resultSize()
+
+	return size
+}
+
+// idSize estimates the size of the ID field
+func (r *Response) idSize() int {
+	if r.id != nil {
+		switch v := r.id.(type) {
+		case string:
+			return len(v) + 2 // +2 for quotes
+		case int64:
+			return intDigits(int(v))
+		case float64:
+			return float64SizeEstimate
+		default:
+			return nullSize
+		}
+	}
+	if len(r.rawID) > 0 {
+		return len(r.rawID)
+	}
+	return nullSize
+}
+
+// errorSize estimates the size of the error field
+func (r *Response) errorSize() int {
+	if r.err != nil {
+		size := errorStructureOverhead
+		size += intDigits(r.err.Code)
+		size += len(r.err.Message)
+		if r.err.Data != nil {
+			size += errorDataEstimate
+		}
+		return size
+	}
+	if len(r.rawError) > 0 {
+		return len(r.rawError)
+	}
+	return 0
+}
+
+// resultSize returns the size of the result field
+func (r *Response) resultSize() int {
+	return len(r.result)
+}
+
+// intDigits calculates the number of digits needed to represent an integer
+func intDigits(n int) int {
+	if n == 0 {
+		return 1
+	}
+	digits := 0
+	absVal := n
+	if absVal < 0 {
+		digits++ // for minus sign
+		absVal = -absVal
+	}
+	for absVal > 0 {
+		digits++
+		absVal /= decimalBase
+	}
+	return digits
+}
+
 // DecodeResponse parses and returns a new Response from a byte slice.
 func DecodeResponse(data []byte) (*Response, error) {
 	if len(bytes.TrimSpace(data)) == 0 {

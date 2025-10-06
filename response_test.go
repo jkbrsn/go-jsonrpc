@@ -1881,3 +1881,214 @@ func TestResponse_Clone(t *testing.T) {
 		}
 	})
 }
+
+func TestResponse_Size(t *testing.T) {
+	t.Run("Size of response with string result", func(t *testing.T) {
+		resp, err := NewResponse("test-id", "result-value")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+
+		// Verify size is close to marshaled size
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		actualSize := len(marshaled)
+
+		// Size should be within reasonable range (±10% of actual)
+		diff := actualSize - size
+		if diff < 0 {
+			diff = -diff
+		}
+		tolerance := actualSize / 10
+		assert.LessOrEqual(t, diff, tolerance,
+			"Size estimate %d should be within 10%% of actual size %d", size, actualSize)
+	})
+
+	t.Run("Size of response with integer ID", func(t *testing.T) {
+		resp, err := NewResponse(int64(42), "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of response with float ID", func(t *testing.T) {
+		resp, err := NewResponse(float64(3.14), "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+	})
+
+	t.Run("Size of response with nil ID", func(t *testing.T) {
+		resp, err := NewResponse(nil, "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of error response", func(t *testing.T) {
+		resp := NewErrorResponse(int64(1), &Error{Code: -32000, Message: "Method not found"})
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of large response", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data here that adds to size",
+			}
+		}
+
+		resp, err := NewResponse(int64(1), largeData)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		actualSize := len(marshaled)
+
+		// For large responses, size should be fairly accurate
+		assert.Greater(t, size, 10000, "Large response should have size > 10KB")
+		assert.InDelta(t, actualSize, size, float64(actualSize)*0.15)
+	})
+
+	t.Run("Size of nil response", func(t *testing.T) {
+		var nilResp *Response
+		size := nilResp.Size()
+		assert.Equal(t, 0, size)
+	})
+
+	t.Run("Size with different ID types", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			id   any
+		}{
+			{"small int", int64(1)},
+			{"large int", int64(9223372036854775807)},
+			{"negative int", int64(-32000)},
+			{"zero int", int64(0)},
+			{"short string", "id"},
+			{"long string", "very-long-identifier-with-many-characters"},
+			{"float", float64(123.456)},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, err := NewResponse(tc.id, "result")
+				require.NoError(t, err)
+
+				size := resp.Size()
+				marshaled, err := resp.MarshalJSON()
+				require.NoError(t, err)
+
+				assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.2)
+			})
+		}
+	})
+
+	t.Run("Size with error containing Data", func(t *testing.T) {
+		resp := NewErrorResponse(int64(1), &Error{
+			Code:    -32000,
+			Message: "Server error",
+			Data:    map[string]string{"detail": "additional information"},
+		})
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+	})
+
+	t.Run("Size accuracy for typical responses", func(t *testing.T) {
+		// Test several typical JSON-RPC responses
+		testCases := []struct {
+			name    string
+			resp    *Response
+			minSize int
+			maxSize int
+		}{
+			{
+				name: "eth_blockNumber response",
+				resp: func() *Response {
+					r, _ := NewResponse(int64(1), "0x1234567")
+					return r
+				}(),
+				minSize: 40,
+				maxSize: 100,
+			},
+			{
+				name: "error response",
+				resp: NewErrorResponse("abc", &Error{
+					Code:    -32601,
+					Message: "Method not found",
+				}),
+				minSize: 60,
+				maxSize: 120,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				size := tc.resp.Size()
+				assert.GreaterOrEqual(t, size, tc.minSize)
+				assert.LessOrEqual(t, size, tc.maxSize)
+
+				// Compare with actual marshaled size
+				marshaled, err := tc.resp.MarshalJSON()
+				require.NoError(t, err)
+				actualSize := len(marshaled)
+
+				assert.InDelta(t, actualSize, size, float64(actualSize)*0.2)
+			})
+		}
+	})
+
+	t.Run("Size with rawID from decoding", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":"decoded-id","result":"data"}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size with rawError from decoding", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size is consistent across multiple calls", func(t *testing.T) {
+		resp, err := NewResponse(int64(1), "data")
+		require.NoError(t, err)
+
+		size1 := resp.Size()
+		size2 := resp.Size()
+		size3 := resp.Size()
+
+		assert.Equal(t, size1, size2)
+		assert.Equal(t, size2, size3)
+	})
+}
