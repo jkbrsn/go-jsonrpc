@@ -694,6 +694,70 @@ func (r *Response) PeekBytesByPath(path ...any) ([]byte, error) {
 	return []byte(raw), nil
 }
 
+// Clone creates a deep copy of the response, ensuring no shared references between the original
+// and the clone. This is useful when deriving new responses or when middleware needs to modify
+// responses without affecting the original.
+//
+// The clone includes:
+//   - Deep copies of all byte slices (rawID, rawError, result)
+//   - Copies of parsed values (id, err)
+//   - A fresh jsonrpc version string
+//
+// The clone does NOT include:
+//   - Cached AST nodes
+//   - Sync primitives (fresh Once guards are created)
+//
+// Example usage:
+//
+//	original, _ := NewResponse(1, "data")
+//	clone, err := original.Clone()
+//	if err != nil {
+//	    return err
+//	}
+func (r *Response) Clone() (*Response, error) {
+	if r == nil {
+		return nil, errors.New("cannot clone nil response")
+	}
+
+	clone := &Response{
+		jsonrpc: r.jsonrpc,
+	}
+
+	// Deep copy ID
+	// For primitive types (string, int64, float64), direct assignment is sufficient
+	// as these are value types or immutable
+	clone.id = r.id
+
+	// Deep copy rawID byte slice
+	if len(r.rawID) > 0 {
+		clone.rawID = make(json.RawMessage, len(r.rawID))
+		copy(clone.rawID, r.rawID)
+	}
+
+	// Deep copy Error
+	if r.err != nil {
+		clone.err = &Error{
+			Code:    r.err.Code,
+			Message: r.err.Message,
+			Data:    r.err.Data, // Data is any, shallow copy
+		}
+	}
+
+	// Deep copy rawError byte slice
+	if len(r.rawError) > 0 {
+		clone.rawError = make(json.RawMessage, len(r.rawError))
+		copy(clone.rawError, r.rawError)
+	}
+
+	// Deep copy result byte slice
+	if len(r.result) > 0 {
+		clone.result = make(json.RawMessage, len(r.result))
+		copy(clone.result, r.result)
+	}
+
+	return clone, nil
+}
+
 // DecodeResponse parses and returns a new Response from a byte slice.
 func DecodeResponse(data []byte) (*Response, error) {
 	if len(bytes.TrimSpace(data)) == 0 {

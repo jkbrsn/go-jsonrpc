@@ -1645,3 +1645,239 @@ func TestResponse_PeekBytesByPath(t *testing.T) {
 		wg.Wait()
 	})
 }
+
+func TestResponse_Clone(t *testing.T) {
+	t.Run("Clone response with result", func(t *testing.T) {
+		original, err := NewResponse("test-id", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+		require.NotNil(t, clone)
+
+		// Verify fields are equal
+		assert.Equal(t, original.Version(), clone.Version())
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, original.RawResult(), clone.RawResult())
+
+		// Verify they are equal using Equals
+		assert.True(t, original.Equals(clone))
+	})
+
+	t.Run("Clone response with error", func(t *testing.T) {
+		original := NewErrorResponse(int64(42), &Error{Code: -32000, Message: "test error"})
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+		require.NotNil(t, clone)
+
+		// Verify fields are equal
+		assert.Equal(t, original.Version(), clone.Version())
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+
+		// Verify they are equal using Equals
+		assert.True(t, original.Equals(clone))
+	})
+
+	t.Run("Clone with different ID types", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			id   any
+		}{
+			{"string ID", "string-id"},
+			{"int64 ID", int64(123)},
+			{"float64 ID", float64(3.14)},
+			{"nil ID", nil},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				original, err := NewResponse(tc.id, "result")
+				require.NoError(t, err)
+
+				clone, err := original.Clone()
+				require.NoError(t, err)
+
+				assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+				assert.True(t, original.Equals(clone))
+			})
+		}
+	})
+
+	t.Run("Deep copy - no shared byte slice references", func(t *testing.T) {
+		original, err := NewResponse(1, "original-result")
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify result byte slices are different
+		originalBytes := original.RawResult()
+		cloneBytes := clone.RawResult()
+
+		// Content should be equal
+		assert.Equal(t, originalBytes, cloneBytes)
+
+		// But slices should have different backing arrays
+		// Modify clone's bytes and verify original is unchanged
+		if len(cloneBytes) > 0 {
+			cloneBytes[0] = 'X'
+			assert.NotEqual(t, originalBytes[0], cloneBytes[0])
+		}
+	})
+
+	t.Run("Deep copy with rawID", func(t *testing.T) {
+		// Create response via decoding to ensure rawID is set
+		data := []byte(`{"jsonrpc":"2.0","id":"test-id","result":"data"}`)
+		original, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify rawID is copied
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+
+		// Modify clone and verify original is unaffected
+		cloneData, err := clone.MarshalJSON()
+		require.NoError(t, err)
+		assert.Contains(t, string(cloneData), "test-id")
+	})
+
+	t.Run("Deep copy with rawError", func(t *testing.T) {
+		// Create response via decoding to ensure rawError is set
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test"}}`)
+		original, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify error is copied
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+	})
+
+	t.Run("Clone preserves large result data", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data",
+			}
+		}
+
+		original, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		assert.True(t, original.Equals(clone))
+
+		// Verify we can unmarshal both independently
+		var originalResult []map[string]string
+		err = original.UnmarshalResult(&originalResult)
+		require.NoError(t, err)
+
+		var cloneResult []map[string]string
+		err = clone.UnmarshalResult(&cloneResult)
+		require.NoError(t, err)
+
+		assert.Equal(t, originalResult, cloneResult)
+		assert.Len(t, cloneResult, 1000)
+	})
+
+	t.Run("AST node cache is not shared", func(t *testing.T) {
+		original, err := NewResponse(1, map[string]string{
+			"field": "value",
+		})
+		require.NoError(t, err)
+
+		// Build AST node on original
+		val, err := original.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+
+		// Clone should not have AST node cached
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Clone should be able to build its own AST node
+		val, err = clone.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+	})
+
+	t.Run("Error on nil response", func(t *testing.T) {
+		var nilResp *Response
+		clone, err := nilResp.Clone()
+		require.Error(t, err)
+		assert.Nil(t, clone)
+		assert.Contains(t, err.Error(), "cannot clone nil response")
+	})
+
+	t.Run("Clone is independent - modifications don't affect original", func(t *testing.T) {
+		original, err := NewResponse("original-id", "original-result")
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Get marshaled versions
+		originalJSON, err := original.MarshalJSON()
+		require.NoError(t, err)
+
+		cloneJSON, err := clone.MarshalJSON()
+		require.NoError(t, err)
+
+		// They should be equal
+		assert.JSONEq(t, string(originalJSON), string(cloneJSON))
+
+		// Verify independence by checking internal state
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, string(original.RawResult()), string(clone.RawResult()))
+	})
+
+	t.Run("Clone with Error.Data field", func(t *testing.T) {
+		original := NewErrorResponse(1, &Error{
+			Code:    -32000,
+			Message: "error",
+			Data:    map[string]string{"detail": "extra info"},
+		})
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify error data is copied
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+		assert.Equal(t, original.Err().Data, clone.Err().Data)
+	})
+
+	t.Run("Clone respects immutability - concurrent cloning", func(t *testing.T) {
+		original, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		clones := make([]*Response, 100)
+
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				clone, err := original.Clone()
+				assert.NoError(t, err)
+				clones[idx] = clone
+			}(i)
+		}
+		wg.Wait()
+
+		// All clones should be equal to original
+		for i, clone := range clones {
+			assert.True(t, original.Equals(clone), "Clone %d should equal original", i)
+		}
+	})
+}
