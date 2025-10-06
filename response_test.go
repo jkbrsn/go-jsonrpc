@@ -1064,3 +1064,45 @@ func TestResponse_LazyUnmarshalOnce(t *testing.T) {
 	}
 	assert.Equal(t, "test-id", results[0])
 }
+
+func TestResponse_Unmarshal(t *testing.T) {
+	t.Run("Unmarshal response with result", func(t *testing.T) {
+		resp, err := NewResponse(int64(1), map[string]string{"foo": "bar"})
+		require.NoError(t, err)
+
+		var out map[string]any
+		err = resp.Unmarshal(&out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(1), out["id"])
+		assert.Equal(t, map[string]any{"foo": "bar"}, out["result"])
+		assert.Nil(t, out["error"])
+	})
+
+	t.Run("Unmarshal response with error", func(t *testing.T) {
+		resp := NewErrorResponse("test-id", &Error{Code: -32000, Message: "test error"})
+
+		var out map[string]any
+		err := resp.Unmarshal(&out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "test-id", out["id"])
+		assert.Nil(t, out["result"])
+
+		errMap, ok := out["error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, float64(-32000), errMap["code"])
+		assert.Equal(t, "test error", errMap["message"])
+	})
+
+	t.Run("Unmarshal with nil destination", func(t *testing.T) {
+		resp, err := NewResponse(1, "test")
+		require.NoError(t, err)
+
+		err = resp.Unmarshal(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "destination pointer cannot be nil")
+	})
+}

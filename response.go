@@ -415,6 +415,24 @@ func (r *Response) UnmarshalResult(dst any) error {
 	return sonic.Unmarshal(r.result, dst)
 }
 
+// Unmarshal decodes the entire JSON-RPC response into the provided destination pointer.
+// This includes all fields: jsonrpc, id, result (if present), and error (if present).
+//
+// Note: This method is not optimized. It performs a marshal-then-unmarshal round trip. For
+// performance-critical code, consider using the individual getter methods.
+func (r *Response) Unmarshal(dst any) error {
+	if dst == nil {
+		return errors.New("destination pointer cannot be nil")
+	}
+
+	data, err := r.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	return sonic.Unmarshal(data, dst)
+}
+
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
 func (r *Response) Validate() error {
 	if r == nil {
