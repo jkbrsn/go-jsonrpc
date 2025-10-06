@@ -763,6 +763,40 @@ func (r *Response) Clone() (*Response, error) {
 	return clone, nil
 }
 
+// Free releases heavy memory-retaining fields after the response has been consumed.
+// This is useful for long-running services, to prevent memory leaks from retained buffers.
+//
+// After calling Free:
+//   - All byte slices (rawID, rawError, result) are released
+//   - Cached AST nodes are released
+//   - Parsed values (id, err) are kept for logging purposes
+//   - The response should not be used for marshaling or field access
+//   - Concurrent use after Free is unsafe
+//
+// Example usage:
+//
+//	response, _ := DecodeResponse(data)
+//	// Use response
+//	json.NewEncoder(w).Encode(response)
+//	// Explicitly free when done
+//	response.Free()
+func (r *Response) Free() {
+	if r == nil {
+		return
+	}
+
+	r.rawID = nil
+	r.rawError = nil
+	r.result = nil
+
+	r.astMutex.Lock()
+	r.astNode = ast.Node{}
+	r.astErr = nil
+	r.astMutex.Unlock()
+
+	// Note: We keep r.id and r.err for logging purposes (typically small values)
+}
+
 const (
 	// Size estimation constants
 	jsonStructureOverhead  = 35 // {"jsonrpc":"2.0","id":,"result":}

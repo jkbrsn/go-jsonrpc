@@ -2093,6 +2093,180 @@ func TestResponse_Size(t *testing.T) {
 	})
 }
 
+func TestResponse_Free(t *testing.T) {
+	t.Run("Free releases byte slices", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		// Verify fields are populated before Free
+		assert.NotNil(t, resp.RawResult())
+		assert.Greater(t, len(resp.RawResult()), 0)
+
+		// Call Free
+		resp.Free()
+
+		// Verify byte slices are nil
+		assert.Nil(t, resp.RawResult())
+	})
+
+	t.Run("Free keeps parsed values for logging", func(t *testing.T) {
+		resp, err := NewResponse(42, "test-data")
+		require.NoError(t, err)
+
+		// Force validation to normalize int to int64
+		_, err = resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Get ID after normalization
+		idBefore := resp.IDOrNil()
+		assert.Equal(t, int64(42), idBefore)
+
+		// Call Free
+		resp.Free()
+
+		// Verify parsed ID is still accessible
+		idAfter := resp.IDOrNil()
+		assert.Equal(t, int64(42), idAfter)
+	})
+
+	t.Run("Free on error response", func(t *testing.T) {
+		resp := NewErrorResponse("test-id", &Error{
+			Code:    -32000,
+			Message: "test error",
+			Data:    map[string]string{"detail": "extra"},
+		})
+
+		// Verify error is accessible before Free
+		assert.NotNil(t, resp.Err())
+		assert.Equal(t, -32000, resp.Err().Code)
+
+		// Call Free
+		resp.Free()
+
+		// Verify error is still accessible for logging
+		assert.NotNil(t, resp.Err())
+		assert.Equal(t, -32000, resp.Err().Code)
+		assert.Equal(t, "test error", resp.Err().Message)
+	})
+
+	t.Run("Free releases AST cache", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{"field": "value"})
+		require.NoError(t, err)
+
+		// Build AST cache
+		val, err := resp.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+
+		// Call Free
+		resp.Free()
+
+		// AST node should be released (zero value)
+		// After Free, result is nil, so PeekStringByPath should fail
+		// or return an error due to invalid AST
+		_, err = resp.PeekStringByPath("field")
+		require.Error(t, err)
+		// Error could be "no result field" or "path not found" depending on AST state
+	})
+
+	t.Run("Free on nil response is safe", func(t *testing.T) {
+		var resp *Response
+		assert.NotPanics(t, func() {
+			resp.Free()
+		})
+	})
+
+	t.Run("Free with rawID and rawError fields", func(t *testing.T) {
+		// Create a response by unmarshaling (which populates rawID, rawError)
+		data := []byte(`{"jsonrpc":"2.0","id":"test-id","error":{"code":-32000,"message":"error"}}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// IDRaw() triggers unmarshal, which populates r.id from r.rawID
+		// So IDRaw() returns the parsed ID, not the raw bytes
+		idBefore := resp.IDOrNil()
+		assert.Equal(t, "test-id", idBefore)
+
+		// Call Free - releases rawID but keeps r.id
+		resp.Free()
+
+		// IDOrNil still returns the parsed value (kept for logging)
+		idAfter := resp.IDOrNil()
+		assert.Equal(t, "test-id", idAfter)
+	})
+
+	t.Run("Marshal fails after Free", func(t *testing.T) {
+		resp, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		// Marshal should work before Free
+		_, err = resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Call Free
+		resp.Free()
+
+		// Marshal should fail after Free (no result field)
+		_, err = resp.MarshalJSON()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "response must contain either result or error")
+	})
+
+	t.Run("WriteTo fails after Free", func(t *testing.T) {
+		resp, err := NewResponse(1, "test")
+		require.NoError(t, err)
+
+		// WriteTo should work before Free
+		var buf bytes.Buffer
+		_, err = resp.WriteTo(&buf)
+		require.NoError(t, err)
+
+		// Call Free
+		resp.Free()
+
+		// WriteTo should fail after Free
+		buf.Reset()
+		_, err = resp.WriteTo(&buf)
+		require.Error(t, err)
+	})
+
+	t.Run("Free releases memory for large responses", func(t *testing.T) {
+		// Create a large response
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some large data here that uses significant memory",
+			}
+		}
+
+		resp, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		// Verify result is large
+		resultSize := len(resp.RawResult())
+		assert.Greater(t, resultSize, 10000)
+
+		// Call Free
+		resp.Free()
+
+		// Verify result is released
+		assert.Nil(t, resp.RawResult())
+	})
+
+	t.Run("Multiple Free calls are safe", func(t *testing.T) {
+		resp, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		// Call Free multiple times
+		assert.NotPanics(t, func() {
+			resp.Free()
+			resp.Free()
+			resp.Free()
+		})
+	})
+}
+
 func TestResponse_IntToInt64Normalization(t *testing.T) {
 	t.Run("int ID is normalized to int64", func(t *testing.T) {
 		// Use plain int literal
