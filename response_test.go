@@ -1340,3 +1340,308 @@ func TestResponse_WriteTo(t *testing.T) {
 		assert.Equal(t, int64(buf.Len()), n)
 	})
 }
+
+func TestResponse_PeekStringByPath(t *testing.T) {
+	t.Run("Extract top-level string field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"blockNumber": "0x1234",
+			"hash":        "0xabcdef",
+		})
+		require.NoError(t, err)
+
+		blockNum, err := resp.PeekStringByPath("blockNumber")
+		require.NoError(t, err)
+		assert.Equal(t, "0x1234", blockNum)
+
+		hash, err := resp.PeekStringByPath("hash")
+		require.NoError(t, err)
+		assert.Equal(t, "0xabcdef", hash)
+	})
+
+	t.Run("Extract nested string field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"transaction": map[string]any{
+				"from": "0x123",
+				"to":   "0x456",
+			},
+		})
+		require.NoError(t, err)
+
+		from, err := resp.PeekStringByPath("transaction", "from")
+		require.NoError(t, err)
+		assert.Equal(t, "0x123", from)
+
+		to, err := resp.PeekStringByPath("transaction", "to")
+		require.NoError(t, err)
+		assert.Equal(t, "0x456", to)
+	})
+
+	t.Run("Extract deeply nested field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"level1": map[string]any{
+				"level2": map[string]any{
+					"level3": map[string]any{
+						"value": "deep",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		value, err := resp.PeekStringByPath("level1", "level2", "level3", "value")
+		require.NoError(t, err)
+		assert.Equal(t, "deep", value)
+	})
+
+	t.Run("No path returns entire result as string (if string)", func(t *testing.T) {
+		resp, err := NewResponse(1, "simple-string")
+		require.NoError(t, err)
+
+		value, err := resp.PeekStringByPath()
+		require.NoError(t, err)
+		assert.Equal(t, "simple-string", value)
+	})
+
+	t.Run("Error when response has no result", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "error"})
+
+		_, err := resp.PeekStringByPath("field")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no result field")
+	})
+
+	t.Run("Error when path not found", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+		})
+		require.NoError(t, err)
+
+		_, err = resp.PeekStringByPath("nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path not found")
+	})
+
+	t.Run("Number value gets converted to string by sonic", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"number": 42,
+		})
+		require.NoError(t, err)
+
+		// sonic's node.String() converts numbers to strings
+		val, err := resp.PeekStringByPath("number")
+		require.NoError(t, err)
+		assert.Equal(t, "42", val)
+	})
+
+	t.Run("AST node is cached for repeated calls", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+			"field2": "value2",
+			"field3": "value3",
+		})
+		require.NoError(t, err)
+
+		// First call builds AST
+		val1, err := resp.PeekStringByPath("field1")
+		require.NoError(t, err)
+		assert.Equal(t, "value1", val1)
+
+		// Subsequent calls reuse cached AST
+		val2, err := resp.PeekStringByPath("field2")
+		require.NoError(t, err)
+		assert.Equal(t, "value2", val2)
+
+		val3, err := resp.PeekStringByPath("field3")
+		require.NoError(t, err)
+		assert.Equal(t, "value3", val3)
+	})
+
+	t.Run("Thread-safe concurrent access", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"blockNumber": "0x1234",
+			"hash":        "0xabcdef",
+			"timestamp":   "0x999",
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(3)
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("blockNumber")
+				assert.NoError(t, err)
+				assert.Equal(t, "0x1234", val)
+			}()
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("hash")
+				assert.NoError(t, err)
+				assert.Equal(t, "0xabcdef", val)
+			}()
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("timestamp")
+				assert.NoError(t, err)
+				assert.Equal(t, "0x999", val)
+			}()
+		}
+		wg.Wait()
+	})
+}
+
+func TestResponse_PeekBytesByPath(t *testing.T) {
+	t.Run("Extract nested object as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"transaction": map[string]any{
+				"from":  "0x123",
+				"to":    "0x456",
+				"value": "1000",
+			},
+		})
+		require.NoError(t, err)
+
+		txBytes, err := resp.PeekBytesByPath("transaction")
+		require.NoError(t, err)
+
+		var tx map[string]string
+		err = json.Unmarshal(txBytes, &tx)
+		require.NoError(t, err)
+		assert.Equal(t, "0x123", tx["from"])
+		assert.Equal(t, "0x456", tx["to"])
+		assert.Equal(t, "1000", tx["value"])
+	})
+
+	t.Run("Extract array as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"logs": []any{
+				map[string]string{"event": "Transfer"},
+				map[string]string{"event": "Approval"},
+			},
+		})
+		require.NoError(t, err)
+
+		logsBytes, err := resp.PeekBytesByPath("logs")
+		require.NoError(t, err)
+
+		var logs []map[string]string
+		err = json.Unmarshal(logsBytes, &logs)
+		require.NoError(t, err)
+		assert.Len(t, logs, 2)
+		assert.Equal(t, "Transfer", logs[0]["event"])
+		assert.Equal(t, "Approval", logs[1]["event"])
+	})
+
+	t.Run("Extract primitive value as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"number": 42,
+		})
+		require.NoError(t, err)
+
+		numBytes, err := resp.PeekBytesByPath("number")
+		require.NoError(t, err)
+		assert.Equal(t, "42", string(numBytes))
+
+		var num int
+		err = json.Unmarshal(numBytes, &num)
+		require.NoError(t, err)
+		assert.Equal(t, 42, num)
+	})
+
+	t.Run("No path returns entire result as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{
+			"key": "value",
+		})
+		require.NoError(t, err)
+
+		resultBytes, err := resp.PeekBytesByPath()
+		require.NoError(t, err)
+
+		var result map[string]string
+		err = json.Unmarshal(resultBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "value", result["key"])
+	})
+
+	t.Run("Error when response has no result", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "error"})
+
+		_, err := resp.PeekBytesByPath("field")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no result field")
+	})
+
+	t.Run("Error when path not found", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+		})
+		require.NoError(t, err)
+
+		_, err = resp.PeekBytesByPath("nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path not found")
+	})
+
+	t.Run("Extract and unmarshal large nested structure", func(t *testing.T) {
+		largeBlock := map[string]any{
+			"blockNumber": "0x1234",
+			"transactions": []any{
+				map[string]string{"hash": "0xaaa", "from": "0x111"},
+				map[string]string{"hash": "0xbbb", "from": "0x222"},
+				map[string]string{"hash": "0xccc", "from": "0x333"},
+			},
+			"metadata": map[string]any{
+				"gasUsed":  "21000",
+				"gasLimit": "8000000",
+			},
+		}
+
+		resp, err := NewResponse(1, largeBlock)
+		require.NoError(t, err)
+
+		// Extract just the transactions array
+		txsBytes, err := resp.PeekBytesByPath("transactions")
+		require.NoError(t, err)
+
+		var txs []map[string]string
+		err = json.Unmarshal(txsBytes, &txs)
+		require.NoError(t, err)
+		assert.Len(t, txs, 3)
+		assert.Equal(t, "0xaaa", txs[0]["hash"])
+
+		// Extract just the metadata
+		metaBytes, err := resp.PeekBytesByPath("metadata")
+		require.NoError(t, err)
+
+		var meta map[string]string
+		err = json.Unmarshal(metaBytes, &meta)
+		require.NoError(t, err)
+		assert.Equal(t, "21000", meta["gasUsed"])
+	})
+
+	t.Run("Thread-safe concurrent access", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"obj1": map[string]string{"key": "value1"},
+			"obj2": map[string]string{"key": "value2"},
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				bytes, err := resp.PeekBytesByPath("obj1")
+				assert.NoError(t, err)
+				assert.Contains(t, string(bytes), "value1")
+			}()
+			go func() {
+				defer wg.Done()
+				bytes, err := resp.PeekBytesByPath("obj2")
+				assert.NoError(t, err)
+				assert.Contains(t, string(bytes), "value2")
+			}()
+		}
+		wg.Wait()
+	})
+}
