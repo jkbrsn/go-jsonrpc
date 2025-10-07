@@ -169,6 +169,36 @@ reqs, err := jsonrpc.NewBatchNotification(
 )
 ```
 
+## Performance
+
+This library is optimized for high-throughput server applications using several techniques:
+
+### Codec Pre-compilation (Enabled by Default)
+
+The library pre-compiles JSON codecs at startup using `sonic.Pretouch`, which eliminates JIT compilation overhead on the first marshal/unmarshal operation. This provides:
+
+- **80-99% improvement in first-call latency**: From ~1-5ms down to ~10-50μs
+- **Better P99 latency**: No unpredictable "warm-up" spike
+- **Small startup cost**: ~10-50ms additional initialization time
+
+**For CLI tools or single-shot programs**, this optimization can be disabled to avoid the startup cost:
+
+```bash
+go build -tags nopretouch
+```
+
+### Buffer Pooling
+
+Stream reading operations (`DecodeResponseFromReader`, `DecodeBatchRequestFromReader`, etc.) use `sync.Pool` for buffer reuse, reducing GC pressure in high-throughput scenarios.
+
+### Lazy Unmarshaling
+
+Response objects use lazy unmarshaling for ID and Error fields, deferring parsing until accessed. This is beneficial when handling large batches where you may not need to inspect every field.
+
+### ID Byte Caching
+
+Response IDs are marshaled once and cached, avoiding re-marshaling on every `MarshalJSON` or `WriteTo` call. This is most valuable when responses are marshaled multiple times (e.g., for caching or retries).
+
 ## Release Process
 
 See [release.yml](.github/workflows/release.yml) for the release process specifics.
