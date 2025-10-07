@@ -7,26 +7,37 @@ import (
 	"io"
 )
 
-// jsonRPCResponseAux is an internal representation used during parsing.
-// This is decoupled from the public struct to allow for custom handling of the response data,
-// separately from how it is marshaled and unmarshaled.
-type jsonRPCResponseAux struct {
+// responseParseFormat is the wire format for parsing JSON-RPC responses.
+// All fields are kept as RawMessage to enable lazy unmarshaling of ID and Error.
+type responseParseFormat struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   json.RawMessage `json:"error,omitempty"`
 }
 
-// jsonRPCResponse is an internal representation of a JSON-RPC response used for marshaling.
-type jsonRPCResponse struct {
+// responseMarshalFormat is the wire format for marshaling JSON-RPC responses.
+// ID is kept as any to handle string/int/float types, Error is fully typed.
+type responseMarshalFormat struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      any             `json:"id"`
 	Error   *Error          `json:"error,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
 }
 
-// MarshalJSON marshals a JSON-RPC response into a byte slice. The public members ID and Error
-// will be prioritized over their raw counterparts.
+// MarshalJSON serializes the Response into a JSON-RPC 2.0 compliant byte slice.
+//
+// The method prioritizes parsed fields (id, err) over their raw counterparts (rawID, rawError)
+// when both are present. If only raw fields exist, they are used directly to avoid unnecessary
+// re-marshaling.
+//
+// The response is validated before marshaling. Returns an error if validation fails or if the
+// Error field cannot be unmarshaled from rawError.
+//
+// Example output:
+//
+//	{"jsonrpc":"2.0","id":1,"result":"success"}
+//	{"jsonrpc":"2.0","id":"abc","error":{"code":-32600,"message":"Invalid Request"}}
 func (r *Response) MarshalJSON() ([]byte, error) {
 	err := r.Validate()
 	if err != nil {
@@ -62,7 +73,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	}
 
 	// Build the output struct. Fields with zero values are omitted.
-	output := jsonRPCResponse{
+	output := responseMarshalFormat{
 		JSONRPC: r.jsonrpc,
 		ID:      id,
 		Error:   errVal,
@@ -77,9 +88,26 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	return marshaled, nil
 }
 
-// UnmarshalJSON unmarshals the input data into the members of Response. Note: does not unmarshal
-// the Result field, but leaves that at the caller's discretion (UnmarshalResult). This is an
-// optimization to prevent unnecessary unmarshalling of the Result field for very large blobs.
+// UnmarshalJSON deserializes JSON-RPC 2.0 response data into the Response.
+//
+// This method performs lazy unmarshaling for optimal performance:
+//   - ID field: stored as rawID, unmarshaled on first access via IDOrNil()
+//   - Error field: unmarshaled eagerly if present (no result field)
+//   - Result field: stored as raw JSON, unmarshaled only via explicit UnmarshalResult() call
+//
+// The lazy unmarshaling of the Result field is particularly important for large responses
+// (e.g., getLogs with thousands of events), as it defers expensive deserialization until needed.
+//
+// Returns an error if the data is invalid JSON, has an incorrect JSON-RPC version, contains
+// both result and error fields, or contains neither.
+//
+// Example usage:
+//
+//	var resp Response
+//	err := json.Unmarshal(data, &resp)
+//	// Result is still raw JSON at this point
+//	var result MyType
+//	resp.UnmarshalResult(&result)
 func (r *Response) UnmarshalJSON(data []byte) error {
 	// Use the core parsing routine
 	if err := r.parseFromBytes(data); err != nil {
@@ -154,7 +182,25 @@ func (r *Response) WriteTo(w io.Writer) (n int64, err error) {
 	return total, nil
 }
 
-// UnmarshalResult decodes the raw Result field into the provided destination pointer.
+// UnmarshalResult deserializes the raw Result field into the provided destination.
+//
+// This method should be called after UnmarshalJSON (or DecodeResponse) to extract the
+// result value. The Result field is kept as raw JSON until this method is called to
+// optimize performance for large responses.
+//
+// Parameters:
+//   - dst: A pointer to the destination variable. Must not be nil.
+//
+// Returns an error if:
+//   - dst is nil
+//   - The response has no result field (only error)
+//   - JSON unmarshaling fails
+//
+// Example usage:
+//
+//	resp, _ := jsonrpc.DecodeResponse(data)
+//	var blockNumber string
+//	err := resp.UnmarshalResult(&blockNumber)
 func (r *Response) UnmarshalResult(dst any) error {
 	if dst == nil {
 		return errors.New("destination pointer cannot be nil")
@@ -167,11 +213,29 @@ func (r *Response) UnmarshalResult(dst any) error {
 	return getSonicAPI().Unmarshal(r.result, dst)
 }
 
-// Unmarshal decodes the entire JSON-RPC response into the provided destination pointer.
-// This includes all fields: jsonrpc, id, result (if present), and error (if present).
+// Unmarshal deserializes the entire Response into a custom struct.
 //
-// Note: This method is not optimized. It performs a marshal-then-unmarshal round trip. For
-// performance-critical code, consider using the individual getter methods.
+// This method decodes all fields (jsonrpc, id, result, error) into the destination.
+// It performs a marshal-then-unmarshal round trip, making it less efficient than using
+// individual getter methods (IDOrNil(), Err(), RawResult(), UnmarshalResult()).
+//
+// Use this method when you need the entire response mapped to a custom struct type.
+// For performance-critical paths, prefer the type-specific methods instead.
+//
+// Parameters:
+//   - dst: A pointer to the destination struct. Must not be nil.
+//
+// Returns an error if dst is nil, marshaling fails, or unmarshaling fails.
+//
+// Example usage:
+//
+//	type CustomResp struct {
+//	    JSONRPC string      `json:"jsonrpc"`
+//	    ID      int         `json:"id"`
+//	    Result  interface{} `json:"result,omitempty"`
+//	}
+//	var custom CustomResp
+//	err := resp.Unmarshal(&custom)
 func (r *Response) Unmarshal(dst any) error {
 	if dst == nil {
 		return errors.New("destination pointer cannot be nil")
@@ -185,9 +249,25 @@ func (r *Response) Unmarshal(dst any) error {
 	return getSonicAPI().Unmarshal(data, dst)
 }
 
-// UnmarshalError unmarshals the raw error into the Error field.
-// The error is unmarshaled lazily on first call and cached for subsequent calls.
-// This method is safe for concurrent use.
+// UnmarshalError deserializes the raw error bytes into the err field.
+//
+// This method implements lazy unmarshaling with caching for thread-safe, efficient access.
+// The error is unmarshaled only once on first call, then cached for subsequent calls.
+// If rawError is empty or err is already populated, this is a no-op.
+//
+// This method is automatically called by Err() and is safe for concurrent use via sync.Once.
+//
+// Returns an error if unmarshaling the error JSON fails.
+//
+// Example usage (typically called indirectly via Err()):
+//
+//	resp, _ := jsonrpc.DecodeResponse(data)
+//	if err := resp.UnmarshalError(); err != nil {
+//	    log.Fatal(err)
+//	}
+//	if resp.Err() != nil {
+//	    log.Printf("JSON-RPC error: %v", resp.Err())
+//	}
 func (r *Response) UnmarshalError() error {
 	var unmarshalErr error
 
@@ -205,7 +285,7 @@ func (r *Response) UnmarshalError() error {
 // the []byte data of the error or the result, it only stores the raw slices in the Response, to
 // allow for any unmarshalling to occur at the caller's discretion.
 func (r *Response) parseFromBytes(data []byte) error {
-	var aux jsonRPCResponseAux
+	var aux responseParseFormat
 	if err := getSonicAPI().Unmarshal(data, &aux); err != nil {
 		return err
 	}
