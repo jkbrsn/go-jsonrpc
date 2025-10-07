@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // JSON-RPC error codes
@@ -80,7 +78,7 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 
 	// 1. Unmarshal the error as a standard JSON-RPC error
 	type alias Error // Avoid infinite recursion by using an alias
-	if err := sonic.Unmarshal(data, (*alias)(e)); err == nil {
+	if err := getSonicAPI().Unmarshal(data, (*alias)(e)); err == nil {
 		// If Code and Message are set, consider a valid error
 		if e.Code != 0 {
 			return nil
@@ -91,7 +89,8 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 	errorStrWrapper := struct {
 		Error string `json:"error"`
 	}{}
-	if err := sonic.Unmarshal(data, &errorStrWrapper); err == nil && errorStrWrapper.Error != "" {
+	err := getSonicAPI().Unmarshal(data, &errorStrWrapper)
+	if err == nil && errorStrWrapper.Error != "" {
 		e.Code = ServerSideException
 		e.Message = errorStrWrapper.Error
 		return nil

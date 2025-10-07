@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // isBatchJSON returns true if the trimmed data starts with '[',
@@ -71,7 +69,7 @@ func DecodeBatchRequest(data []byte) ([]*Request, error) {
 
 	// Unmarshal as array of raw messages
 	var rawMessages []json.RawMessage
-	if err := sonic.Unmarshal(data, &rawMessages); err != nil {
+	if err := getSonicAPI().Unmarshal(data, &rawMessages); err != nil {
 		return nil, fmt.Errorf("invalid batch format: %w", err)
 	}
 
@@ -110,7 +108,7 @@ func EncodeBatchRequest(reqs []*Request) ([]byte, error) {
 	}
 
 	// Marshal as array
-	return sonic.Marshal(reqs)
+	return getSonicAPI().Marshal(reqs)
 }
 
 // DecodeBatchResponse parses a JSON-RPC batch response from a byte slice.
@@ -125,7 +123,7 @@ func DecodeBatchResponse(data []byte) ([]*Response, error) {
 
 	// Unmarshal as array of raw messages
 	var rawMessages []json.RawMessage
-	if err := sonic.Unmarshal(data, &rawMessages); err != nil {
+	if err := getSonicAPI().Unmarshal(data, &rawMessages); err != nil {
 		return nil, fmt.Errorf("invalid batch format: %w", err)
 	}
 
@@ -163,7 +161,7 @@ func EncodeBatchResponse(resps []*Response) ([]byte, error) {
 	}
 
 	// Marshal as array
-	return sonic.Marshal(resps)
+	return getSonicAPI().Marshal(resps)
 }
 
 // DecodeBatchRequestFromReader parses a JSON-RPC batch request from an io.Reader.

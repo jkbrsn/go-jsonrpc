@@ -8,7 +8,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/bytedance/sonic"     // Primary JSON parser for performance
 	"github.com/bytedance/sonic/ast" // AST for zero-copy JSON traversal
 )
 
@@ -103,7 +102,7 @@ func (r *Response) parseFromBytes(data []byte) error {
 	}
 
 	var aux jsonRPCResponseAux
-	if err := sonic.Unmarshal(data, &aux); err != nil {
+	if err := getSonicAPI().Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
@@ -157,7 +156,7 @@ func (r *Response) unmarshalID() error {
 	}
 
 	var id any
-	if err := sonic.Unmarshal(r.rawID, &id); err != nil {
+	if err := getSonicAPI().Unmarshal(r.rawID, &id); err != nil {
 		return fmt.Errorf("invalid id field: %w", err)
 	}
 
@@ -361,7 +360,7 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 		Result:  result,
 	}
 
-	marshaled, err := sonic.Marshal(output)
+	marshaled, err := getSonicAPI().Marshal(output)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal JSON-RPC response: %w", err)
 	}
@@ -423,7 +422,7 @@ func (r *Response) UnmarshalResult(dst any) error {
 		return errors.New("response has no result field")
 	}
 
-	return sonic.Unmarshal(r.result, dst)
+	return getSonicAPI().Unmarshal(r.result, dst)
 }
 
 // Unmarshal decodes the entire JSON-RPC response into the provided destination pointer.
@@ -441,7 +440,7 @@ func (r *Response) Unmarshal(dst any) error {
 		return err
 	}
 
-	return sonic.Unmarshal(data, dst)
+	return getSonicAPI().Unmarshal(data, dst)
 }
 
 // Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
@@ -547,7 +546,7 @@ func (r *Response) getIDBytes() ([]byte, error) {
 		return r.rawID, nil
 	}
 	if r.id != nil {
-		return sonic.Marshal(r.id)
+		return getSonicAPI().Marshal(r.id)
 	}
 	return []byte("null"), nil
 }
@@ -569,7 +568,7 @@ func (r *Response) writeErrorField(w io.Writer, total *int64) error {
 // getErrorBytes returns the marshaled error bytes
 func (r *Response) getErrorBytes() ([]byte, error) {
 	if r.err != nil {
-		return sonic.Marshal(r.err)
+		return getSonicAPI().Marshal(r.err)
 	}
 	return r.rawError, nil
 }
@@ -939,7 +938,7 @@ func DecodeResponseFromReader(r io.Reader, expectedSize int) (*Response, error) 
 
 // NewResponse creates a JSON-RPC 2.0 response with a result.
 func NewResponse(id any, result any) (*Response, error) {
-	resultBytes, err := sonic.Marshal(result)
+	resultBytes, err := getSonicAPI().Marshal(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
@@ -947,7 +946,7 @@ func NewResponse(id any, result any) (*Response, error) {
 	// Pre-marshal the ID to cache it for later use
 	var rawID json.RawMessage
 	if id != nil {
-		idBytes, err := sonic.Marshal(id)
+		idBytes, err := getSonicAPI().Marshal(id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal id: %w", err)
 		}
@@ -967,7 +966,7 @@ func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
 	// Pre-marshal the ID to cache it for later use
 	var rawID json.RawMessage
 	if id != nil {
-		idBytes, err := sonic.Marshal(id)
+		idBytes, err := getSonicAPI().Marshal(id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal id: %w", err)
 		}
@@ -987,7 +986,7 @@ func NewErrorResponse(id any, err *Error) *Response {
 	// Pre-marshal the ID to cache it for later use
 	var rawID json.RawMessage
 	if id != nil {
-		idBytes, marshalErr := sonic.Marshal(id)
+		idBytes, marshalErr := getSonicAPI().Marshal(id)
 		if marshalErr == nil {
 			rawID = idBytes
 		}

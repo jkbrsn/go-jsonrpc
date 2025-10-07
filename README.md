@@ -173,6 +173,38 @@ reqs, err := jsonrpc.NewBatchNotification(
 
 This library is optimized for high-throughput server applications using several techniques:
 
+### Performance Profiles
+
+The library provides five performance profiles that allow you to choose the right trade-off between speed, safety, and compatibility:
+
+```go
+// Use balanced profile for production (recommended)
+jsonrpc.SetPerformanceProfile(jsonrpc.ProfileBalanced)
+
+// Or choose another profile based on your needs
+jsonrpc.SetPerformanceProfile(jsonrpc.ProfileFast)
+```
+
+**Available Profiles:**
+
+- **`ProfileDefault`** (default): Sonic's efficient defaults - recommended for most usess
+- **`ProfileCompatible`**: Mimics `encoding/json` behavior for a slower, but deterministic, output with sorted keys
+- **`ProfileBalanced`**: Safe performance optimizations, ~5-10% faster than default with effectively zero risk
+- **`ProfileFast`**: Sonic's `ConfigFastest` - skips some validation for internal services
+- **`ProfileAggressive`**: Maximum speed, minimum validation - only for experts with controlled input
+
+**Choosing a Profile:**
+
+| Profile | Best For | Performance | Safety |
+|---------|----------|-------------|--------|
+| **ProfileDefault** | General use, untrusted input | Baseline | High |
+| **ProfileCompatible** | Migration from encoding/json | Slower | High |
+| **ProfileBalanced** | Production apps | +5-10% | High |
+| **ProfileFast** | Internal services | +10-15% | Medium |
+| **ProfileAggressive** | HFT, real-time systems | +15-20% | Low |
+
+See [performance.go](performance.go) for detailed documentation on each profile.
+
 ### Codec Pre-compilation (Enabled by Default)
 
 The library pre-compiles JSON codecs at startup using `sonic.Pretouch`, which eliminates JIT compilation overhead on the first marshal/unmarshal operation. This provides:

@@ -281,7 +281,7 @@ func init() {
 ### 9. Custom sonic.Config (Consider Carefully) ⚠️
 
 **What:**
-The reference library uses a custom `sonic.Config` with aggressive optimizations:
+The reference library (eRPC) uses a custom `sonic.Config` with aggressive optimizations:
 
 ```go
 SonicCfg = sonic.Config{
@@ -296,6 +296,16 @@ SonicCfg = sonic.Config{
     ValidateString:          false,  // Skip UTF-8 validation
 }.Froze()
 ```
+
+**Note:** Sonic's official `ConfigFastest` (v1.14.1) is much more conservative, only setting:
+```go
+ConfigFastest = Config{
+    NoValidateJSONMarshaler: true,
+    NoValidateJSONSkip:      true,
+}.Froze()
+```
+
+The aggressive config above is specific to eRPC's high-performance requirements.
 
 **Analysis of Each Setting:**
 
