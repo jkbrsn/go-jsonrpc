@@ -15,10 +15,10 @@ const (
 	// and safety. Provides excellent performance without sacrificing robustness.
 	//
 	// Characteristics:
-	//   - No HTML escaping (JSON-RPC doesn't need it)
-	//   - No map key sorting (determinism not required)
+	//   - No HTML escaping
+	//   - No map key sorting
 	//   - Full validation enabled
-	//   - String copying enabled (safer for concurrent use)
+	//   - String copying enabled
 	ProfileDefault PerformanceProfile = iota
 
 	// ProfileCompatible mimics encoding/json behavior for maximum compatibility.
@@ -39,8 +39,8 @@ const (
 	// all safety validations enabled.
 	//
 	// Characteristics:
-	//   - No HTML escaping (JSON-RPC safe)
-	//   - No map key sorting (faster)
+	//   - No HTML escaping
+	//   - No map key sorting
 	//   - Compact marshaling
 	//   - No null slices/maps (cleaner JSON)
 	//   - Full validation enabled

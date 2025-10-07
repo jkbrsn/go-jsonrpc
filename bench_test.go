@@ -352,3 +352,239 @@ func makeBatchResponseJSON(count int) []byte {
 	_ = buf.WriteByte(']')
 	return buf.Bytes()
 }
+
+// BenchmarkProfiles_DecodeRequest compares request decoding across all performance profiles
+func BenchmarkProfiles_DecodeRequest(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := DecodeRequest(mediumRequestJSON)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	// Restore default after benchmarks
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_DecodeResponse compares response decoding across all performance profiles
+func BenchmarkProfiles_DecodeResponse(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := DecodeResponse(mediumResponseJSON)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_RequestMarshal compares request marshaling across all performance profiles
+func BenchmarkProfiles_RequestMarshal(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	req := &Request{
+		JSONRPC: "2.0",
+		ID:      int64(42),
+		Method:  "updateUser",
+		Params: map[string]any{
+			"userId": 12345,
+			"name":   "Alice Johnson",
+			"email":  "alice@example.com",
+			"preferences": map[string]any{
+				"theme":         "dark",
+				"language":      "en",
+				"notifications": true,
+			},
+		},
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := req.MarshalJSON()
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_ResponseMarshal compares response marshaling across all performance profiles
+func BenchmarkProfiles_ResponseMarshal(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+
+			// Create response with structured result
+			resp, err := NewResponse(int64(42), map[string]any{
+				"userId":    12345,
+				"name":      "Alice Johnson",
+				"email":     "alice@example.com",
+				"status":    "active",
+				"lastLogin": "2024-01-15T10:30:00Z",
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := resp.MarshalJSON()
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_UnmarshalResult compares lazy result unmarshaling across all profiles
+func BenchmarkProfiles_UnmarshalResult(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	type Result struct {
+		UserID    int    `json:"userId"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		Status    string `json:"status"`
+		LastLogin string `json:"lastLogin"`
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+
+			// Decode once outside the benchmark loop
+			resp, err := DecodeResponse(mediumResponseJSON)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var result Result
+				if err := resp.UnmarshalResult(&result); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_BatchRequest compares batch request decoding across all profiles
+func BenchmarkProfiles_BatchRequest(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	batch := makeBatchRequestJSON(10)
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := DecodeBatchRequest(batch)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
+
+// BenchmarkProfiles_LargePayload compares profile performance with large payloads
+func BenchmarkProfiles_LargePayload(b *testing.B) {
+	profiles := []PerformanceProfile{
+		ProfileDefault,
+		ProfileCompatible,
+		ProfileBalanced,
+		ProfileFast,
+		ProfileAggressive,
+	}
+
+	for _, profile := range profiles {
+		b.Run(profile.String(), func(b *testing.B) {
+			SetPerformanceProfile(profile)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := DecodeRequest(largeRequestJSON)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	SetPerformanceProfile(ProfileDefault)
+}
