@@ -7,17 +7,49 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // revive:disable:add-constant makes sense here
 
-// formatFloat64ID formats a float64 ID as a string, removing trailing
-// zeroes while preserving ".0" for whole numbers.
+// bufferPool is a sync.Pool for reusing byte buffers during stream reading. Purpose is to reduce
+// GC pressure in high-throughput scenarios by reusing buffers.
+var bufferPool = sync.Pool{
+	New: func() any {
+		// Pre-allocate 16KB buffers (typical response size)
+		buf := make([]byte, 0, 16*1024)
+		return &buf
+	},
+}
+
+// getBuffer retrieves a buffer from the pool.
+func getBuffer() *[]byte {
+	buf, ok := bufferPool.Get().(*[]byte)
+	if !ok {
+		// This should never happen, but satisfy the linter
+		newBuf := make([]byte, 0, 16*1024)
+		return &newBuf
+	}
+	return buf
+}
+
+// putBuffer returns a buffer to the pool after clearing it.
+func putBuffer(buf *[]byte) {
+	if buf == nil {
+		return
+	}
+	// Reset the buffer but keep capacity for reuse
+	*buf = (*buf)[:0]
+	bufferPool.Put(buf)
+}
+
+// formatFloat64ID formats a float64 ID as a string, removing trailing zeroes while
+// preserving ".0" for whole numbers.
 //
-// This function supports fractional JSON-RPC IDs, which is a deviation
-// from the JSON-RPC 2.0 specification.
-// The spec states that ID numbers "SHOULD NOT contain fractional parts" (Section 5),
-// but this library allows them for flexibility and compatibility.
+// This function supports fractional JSON-RPC IDs, which is a deviation from the
+// JSON-RPC 2.0 specification. The spec states that ID numbers "SHOULD NOT contain
+// fractional parts" (Section 5), but this library allows them for flexibility
+// and compatibility.
 //
 // Reference: https://www.jsonrpc.org/specification#request_object
 func formatFloat64ID(id float64) string {
@@ -46,41 +78,28 @@ func RandomJSONRPCID() int64 {
 }
 
 // readAll reads all data from the given reader and returns it as a byte slice.
-// The buffer size adapts based on expectedSize to minimize allocations:
-// - For small messages (<= 1KB): starts with 512B
-// - For medium messages (1KB-16KB): starts with expectedSize
-// - For large messages (>16KB): starts with 16KB, grows as needed
+// Uses buffer pooling to reduce GC pressure in high-throughput scenarios.
+// The returned byte slice is a copy to avoid retaining the pooled buffer.
 func readAll(reader io.Reader, chunkSize int64, expectedSize int) ([]byte, error) {
 	if reader == nil {
 		return nil, errors.New("cannot read from nil reader")
 	}
 
-	// Adaptive initial buffer sizing
-	initialSize := 512                 // Default for unknown sizes (small messages)
-	upperSizeLimit := 50 * 1024 * 1024 // Max limit of 50MB
+	// Get a buffer from the pool
+	buf := getBuffer()
+	defer putBuffer(buf)
 
+	// Adaptive initial capacity based on expectedSize
+	const upperSizeLimit = 50 * 1024 * 1024 // Max limit of 50MB
+
+	// Scale and use bytes.Buffer wrapper for efficient append operations
 	if expectedSize > 0 && expectedSize < upperSizeLimit {
-		if expectedSize <= 1024 {
-			// Small messages: use compact buffer
-			initialSize = 512
-		} else if expectedSize <= 16*1024 {
-			// Medium messages: pre-allocate exact size
-			initialSize = expectedSize
-		} else {
-			// Large messages: start with 16KB, grow as needed
-			initialSize = 16 * 1024
+		// Grow buffer cap if required by expectedSize
+		if expectedSize > cap(*buf) {
+			*buf = make([]byte, 0, expectedSize)
 		}
-	} else if expectedSize == 0 {
-		// Unknown size: start small for typical small JSON-RPC messages
-		initialSize = 512
 	}
-
-	buffer := bytes.NewBuffer(make([]byte, 0, initialSize))
-
-	// Grow buffer if we know we'll need more space
-	if expectedSize > initialSize && expectedSize < upperSizeLimit {
-		buffer.Grow(expectedSize - initialSize)
-	}
+	buffer := bytes.NewBuffer(*buf)
 
 	// Read data in chunks
 	for {
@@ -96,5 +115,11 @@ func readAll(reader io.Reader, chunkSize int64, expectedSize int) ([]byte, error
 		}
 	}
 
-	return buffer.Bytes(), nil
+	// Prevent memory leaks by making a copy of the data to avoid retaining the pooled buffer.
+	// This avoids cases where the upstream buffer is retained by the response object.
+	data := buffer.Bytes()
+	result := make([]byte, len(data))
+	copy(result, data)
+
+	return result, nil
 }
