@@ -27,7 +27,10 @@ type Response struct {
 	err    *Error
 	result json.RawMessage
 
-	// Internal fields for lazy unmarshaling
+	// Internal fields for lazy unmarshaling and caching
+	// rawID serves dual purpose:
+	// 1. Stores raw ID bytes from incoming JSON (unmarshal path)
+	// 2. Caches marshaled ID bytes for outgoing JSON (marshal path)
 	rawID    json.RawMessage
 	rawError json.RawMessage
 
@@ -324,10 +327,10 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 
 	// Retrieve the ID value
 	var id any
-	if r.id != nil {
-		id = r.id
-	} else if r.rawID != nil {
+	if len(r.rawID) > 0 {
 		id = r.rawID
+	} else if r.id != nil {
+		id = r.id
 	} else {
 		id = nil
 	}
@@ -538,13 +541,13 @@ func writeBytes(w io.Writer, b []byte, total *int64) error {
 	return err
 }
 
-// getIDBytes returns the marshaled ID bytes
+// getIDBytes returns the marshaled ID bytes. Uses cached rawID if available to avoid re-marshaling.
 func (r *Response) getIDBytes() ([]byte, error) {
+	if len(r.rawID) > 0 {
+		return r.rawID, nil
+	}
 	if r.id != nil {
 		return sonic.Marshal(r.id)
-	}
-	if r.rawID != nil {
-		return r.rawID, nil
 	}
 	return []byte("null"), nil
 }
@@ -941,27 +944,60 @@ func NewResponse(id any, result any) (*Response, error) {
 		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
 
+	// Pre-marshal the ID to cache it for later use
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, err := sonic.Marshal(id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal id: %w", err)
+		}
+		rawID = idBytes
+	}
+
 	return &Response{
 		jsonrpc: jsonRPCVersion,
 		id:      id,
+		rawID:   rawID,
 		result:  resultBytes,
 	}, nil
 }
 
 // NewResponseFromRaw creates a JSON-RPC 2.0 response with a raw result.
 func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
+	// Pre-marshal the ID to cache it for later use
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, err := sonic.Marshal(id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal id: %w", err)
+		}
+		rawID = idBytes
+	}
+
 	return &Response{
 		jsonrpc: jsonRPCVersion,
 		id:      id,
+		rawID:   rawID,
 		result:  rawResult,
 	}, nil
 }
 
 // NewErrorResponse creates a JSON-RPC 2.0 error response.
 func NewErrorResponse(id any, err *Error) *Response {
+	// Pre-marshal the ID to cache it for later use
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, marshalErr := sonic.Marshal(id)
+		if marshalErr == nil {
+			rawID = idBytes
+		}
+		// If marshal fails, rawID remains nil and MarshalJSON will handle it
+	}
+
 	return &Response{
 		jsonrpc: jsonRPCVersion,
 		id:      id,
+		rawID:   rawID,
 		err:     err,
 	}
 }
