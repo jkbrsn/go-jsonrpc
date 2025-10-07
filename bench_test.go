@@ -52,7 +52,7 @@ var (
 func BenchmarkDecodeRequest(b *testing.B) {
 	b.Run("Small", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeRequest(smallRequestJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -62,7 +62,7 @@ func BenchmarkDecodeRequest(b *testing.B) {
 
 	b.Run("Medium", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeRequest(mediumRequestJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -72,7 +72,7 @@ func BenchmarkDecodeRequest(b *testing.B) {
 
 	b.Run("Large", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeRequest(largeRequestJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -87,7 +87,7 @@ func BenchmarkDecodeRequest(b *testing.B) {
 func BenchmarkDecodeResponse(b *testing.B) {
 	b.Run("Small_Result", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeResponse(smallResponseJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -97,7 +97,7 @@ func BenchmarkDecodeResponse(b *testing.B) {
 
 	b.Run("Medium_Result", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeResponse(mediumResponseJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -107,7 +107,7 @@ func BenchmarkDecodeResponse(b *testing.B) {
 
 	b.Run("Large_Result", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeResponse(largeResponseJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -117,7 +117,7 @@ func BenchmarkDecodeResponse(b *testing.B) {
 
 	b.Run("Error_Response", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeResponse(errorResponseJSON)
 			if err != nil {
 				b.Fatal(err)
@@ -136,7 +136,7 @@ func BenchmarkDecodeBatchRequest(b *testing.B) {
 
 	b.Run("Batch_1", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchRequest(batch1)
 			if err != nil {
 				b.Fatal(err)
@@ -146,7 +146,7 @@ func BenchmarkDecodeBatchRequest(b *testing.B) {
 
 	b.Run("Batch_10", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchRequest(batch10)
 			if err != nil {
 				b.Fatal(err)
@@ -156,7 +156,7 @@ func BenchmarkDecodeBatchRequest(b *testing.B) {
 
 	b.Run("Batch_100", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchRequest(batch100)
 			if err != nil {
 				b.Fatal(err)
@@ -175,7 +175,7 @@ func BenchmarkDecodeBatchResponse(b *testing.B) {
 
 	b.Run("Batch_1", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchResponse(batch1)
 			if err != nil {
 				b.Fatal(err)
@@ -185,7 +185,7 @@ func BenchmarkDecodeBatchResponse(b *testing.B) {
 
 	b.Run("Batch_10", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchResponse(batch10)
 			if err != nil {
 				b.Fatal(err)
@@ -195,7 +195,7 @@ func BenchmarkDecodeBatchResponse(b *testing.B) {
 
 	b.Run("Batch_100", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := DecodeBatchResponse(batch100)
 			if err != nil {
 				b.Fatal(err)
@@ -220,7 +220,7 @@ func BenchmarkRequestMarshal(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := req.MarshalJSON()
 		if err != nil {
 			b.Fatal(err)
@@ -239,7 +239,7 @@ func BenchmarkResponseMarshal(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := resp.MarshalJSON()
 		if err != nil {
 			b.Fatal(err)
@@ -262,7 +262,7 @@ func BenchmarkUnmarshalResult(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var result Result
 		if err := resp.UnmarshalResult(&result); err != nil {
 			b.Fatal(err)
@@ -284,7 +284,7 @@ func BenchmarkUnmarshalParams(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var params Params
 		if err := req.UnmarshalParams(&params); err != nil {
 			b.Fatal(err)
@@ -298,7 +298,7 @@ func BenchmarkUnmarshalParams(b *testing.B) {
 func BenchmarkDecodeResponseFromReader(b *testing.B) {
 	b.Run("Small", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reader := bytes.NewReader(smallResponseJSON)
 			_, err := DecodeResponseFromReader(reader, len(smallResponseJSON))
 			if err != nil {
@@ -309,7 +309,7 @@ func BenchmarkDecodeResponseFromReader(b *testing.B) {
 
 	b.Run("Large", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reader := bytes.NewReader(largeResponseJSON)
 			_, err := DecodeResponseFromReader(reader, len(largeResponseJSON))
 			if err != nil {
@@ -324,7 +324,7 @@ func BenchmarkDecodeResponseFromReader(b *testing.B) {
 func makeBatchRequestJSON(count int) []byte {
 	var buf bytes.Buffer
 	_ = buf.WriteByte('[')
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			_ = buf.WriteByte(',')
 		}
@@ -341,7 +341,7 @@ func makeBatchRequestJSON(count int) []byte {
 func makeBatchResponseJSON(count int) []byte {
 	var buf bytes.Buffer
 	_ = buf.WriteByte('[')
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			_ = buf.WriteByte(',')
 		}
@@ -368,7 +368,7 @@ func BenchmarkProfiles_DecodeRequest(b *testing.B) {
 			SetPerformanceProfile(profile)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := DecodeRequest(mediumRequestJSON)
 				if err != nil {
 					b.Fatal(err)
@@ -396,7 +396,7 @@ func BenchmarkProfiles_DecodeResponse(b *testing.B) {
 			SetPerformanceProfile(profile)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := DecodeResponse(mediumResponseJSON)
 				if err != nil {
 					b.Fatal(err)
@@ -439,7 +439,7 @@ func BenchmarkProfiles_RequestMarshal(b *testing.B) {
 			SetPerformanceProfile(profile)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := req.MarshalJSON()
 				if err != nil {
 					b.Fatal(err)
@@ -479,7 +479,7 @@ func BenchmarkProfiles_ResponseMarshal(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := resp.MarshalJSON()
 				if err != nil {
 					b.Fatal(err)
@@ -521,7 +521,7 @@ func BenchmarkProfiles_UnmarshalResult(b *testing.B) {
 
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				var result Result
 				if err := resp.UnmarshalResult(&result); err != nil {
 					b.Fatal(err)
@@ -550,7 +550,7 @@ func BenchmarkProfiles_BatchRequest(b *testing.B) {
 			SetPerformanceProfile(profile)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := DecodeBatchRequest(batch)
 				if err != nil {
 					b.Fatal(err)
@@ -577,7 +577,7 @@ func BenchmarkProfiles_LargePayload(b *testing.B) {
 			SetPerformanceProfile(profile)
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := DecodeRequest(largeRequestJSON)
 				if err != nil {
 					b.Fatal(err)
