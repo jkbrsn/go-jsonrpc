@@ -264,9 +264,3 @@ func DecodeRequest(data []byte) (*Request, error) {
 	}
 	return req, nil
 }
-
-// RequestFromBytes creates a JSON-RPC request from a byte slice.
-// Deprecated: Use DecodeRequest instead. See MIGRATION.md for details. Will be removed in v2.0.
-func RequestFromBytes(data []byte) (*Request, error) {
-	return DecodeRequest(data)
-}

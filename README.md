@@ -247,19 +247,6 @@ The Manual Release workflow enforces consistent versioning rules:
 
 This means you can iterate with `prerelease = true` and later “promote” the same base to a final, but you cannot reuse or downgrade existing finals.
 
-## Migration Guide
-
-If you're upgrading from earlier versions, some function names have changed to follow Go conventions more closely. See [MIGRATION.md](MIGRATION.md) for detailed migration instructions.
-
-**Quick reference:**
-- `RequestFromBytes` → `DecodeRequest`
-- `NewResponseFromBytes` → `DecodeResponse`
-- `NewResponseFromStream` → `DecodeResponseFromReader` (note: does not auto-close reader)
-- `resp.IDRaw()` → `resp.IDOrNil()`
-- `resp.Error` → `resp.Err()` (field is now unexported)
-- `resp.Result` → `resp.RawResult()` (field is now unexported)
-- `resp.JSONRPC` → `resp.Version()` (field is now unexported)
-- `resp.ID` → `resp.IDOrNil()` (field is now unexported)
 
 ## Contributing
 

@@ -236,12 +236,6 @@ func (r *Response) IDOrNil() any {
 	return r.id
 }
 
-// IDRaw returns the unmarshaled ID, or nil if unmarshaling fails.
-// Deprecated: Use IDOrNil instead for clearer intent. See MIGRATION.md for details.
-func (r *Response) IDRaw() any {
-	return r.IDOrNil()
-}
-
 // IDString returns the ID as a string.
 func (r *Response) IDString() string {
 	switch id := r.id.(type) {
@@ -999,22 +993,4 @@ func NewErrorResponse(id any, err *Error) *Response {
 		rawID:   rawID,
 		err:     err,
 	}
-}
-
-// NewResponseFromBytes parses and returns a new Response from a byte slice.
-// Deprecated: Use DecodeResponse instead. See MIGRATION.md for details. Will be removed in v2.0.
-func NewResponseFromBytes(data []byte) (*Response, error) {
-	return DecodeResponse(data)
-}
-
-// NewResponseFromStream parses and returns a new Response from a stream.
-// Deprecated: Use DecodeResponseFromReader instead. Note that DecodeResponseFromReader
-// does NOT automatically close the reader. See MIGRATION.md for details. Will be removed in v2.0.
-func NewResponseFromStream(body io.ReadCloser, expectedSize int) (*Response, error) {
-	if body == nil {
-		return nil, errors.New("cannot read from nil reader")
-	}
-	defer body.Close() // nolint:errcheck
-
-	return DecodeResponseFromReader(body, expectedSize)
 }

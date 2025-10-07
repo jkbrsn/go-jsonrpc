@@ -344,35 +344,9 @@ func TestRequest_UnmarshalJSON(t *testing.T) {
 	})
 }
 
-func TestRequestFromBytes(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		data := []byte(`{"jsonrpc":"2.0","id":1,"method":"testMethod","params":["0x123"]}`)
-		req, err := RequestFromBytes(data)
-		require.NoError(t, err)
-		require.NotNil(t, req)
-		assert.Equal(t, "testMethod", req.Method)
-		assert.EqualValues(t, 1, req.ID)
-		assert.Equal(t, []any{"0x123"}, req.Params)
-	})
-
-	t.Run("Unmarshal error", func(t *testing.T) {
-		// Invalid JSON, ID is empty
-		data := []byte(`{"jsonrpc":"2.0","id":,"method":"testMethod"}`)
-		req, err := RequestFromBytes(data)
-		require.Error(t, err)
-		require.Nil(t, req)
-	})
-
-	t.Run("Empty input data", func(t *testing.T) {
-		req, err := RequestFromBytes([]byte{})
-		require.Error(t, err)
-		require.Nil(t, req)
-	})
-}
-
 func TestRequest_Concurrency(t *testing.T) {
 	data := []byte(`{"jsonrpc":"2.0","id":1,"method":"testMethod","params":["0x123"]}`)
-	req, err := RequestFromBytes(data)
+	req, err := DecodeRequest(data)
 	require.NoError(t, err)
 	require.NotNil(t, req)
 
@@ -397,4 +371,30 @@ func TestRequest_Concurrency(t *testing.T) {
 	go testFunc()
 
 	wg.Wait()
+}
+
+func TestDecodeRequest(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":1,"method":"testMethod","params":["0x123"]}`)
+		req, err := DecodeRequest(data)
+		require.NoError(t, err)
+		require.NotNil(t, req)
+		assert.Equal(t, "testMethod", req.Method)
+		assert.EqualValues(t, 1, req.ID)
+		assert.Equal(t, []any{"0x123"}, req.Params)
+	})
+
+	t.Run("Unmarshal error", func(t *testing.T) {
+		// Invalid JSON, ID is empty
+		data := []byte(`{"jsonrpc":"2.0","id":,"method":"testMethod"}`)
+		req, err := DecodeRequest(data)
+		require.Error(t, err)
+		require.Nil(t, req)
+	})
+
+	t.Run("Empty input data", func(t *testing.T) {
+		req, err := DecodeRequest([]byte{})
+		require.Error(t, err)
+		require.Nil(t, req)
+	})
 }
