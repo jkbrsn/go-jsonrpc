@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/bytedance/sonic" // Primary JSON parser for performance
 )
 
 // Request is a struct for a JSON-RPC request. It conforms to the JSON-RPC 2.0 specification, with
@@ -57,7 +55,7 @@ func (r *Request) MarshalJSON() ([]byte, error) {
 	}
 
 	type alias Request // Avoid infinite recursion by using an alias
-	return sonic.Marshal((*alias)(r))
+	return getSonicAPI().Marshal((*alias)(r))
 }
 
 // String returns a string representation of the JSON-RPC request.
@@ -73,7 +71,7 @@ func unmarshalRequestID(rawID json.RawMessage) (any, error) {
 	}
 
 	var id any
-	if err := sonic.Unmarshal(rawID, &id); err != nil {
+	if err := getSonicAPI().Unmarshal(rawID, &id); err != nil {
 		return nil, fmt.Errorf("invalid id field: %w", err)
 	}
 
@@ -106,7 +104,7 @@ func unmarshalRequestParams(rawParams json.RawMessage) (any, error) {
 	}
 
 	var params any
-	if err := sonic.Unmarshal(rawParams, &params); err != nil {
+	if err := getSonicAPI().Unmarshal(rawParams, &params); err != nil {
 		return nil, fmt.Errorf("invalid params field: %w", err)
 	}
 
@@ -137,7 +135,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	}
 
 	var aux requestAux
-	if err := sonic.Unmarshal(data, &aux); err != nil {
+	if err := getSonicAPI().Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
@@ -246,12 +244,12 @@ func (r *Request) UnmarshalParams(dst any) error {
 
 	// Marshal params back to JSON, then unmarshal into destination
 	// This handles the conversion from any ([]any or map[string]any) to the target type
-	paramBytes, err := sonic.Marshal(r.Params)
+	paramBytes, err := getSonicAPI().Marshal(r.Params)
 	if err != nil {
 		return fmt.Errorf("failed to marshal params: %w", err)
 	}
 
-	return sonic.Unmarshal(paramBytes, dst)
+	return getSonicAPI().Unmarshal(paramBytes, dst)
 }
 
 // DecodeRequest parses a JSON-RPC request from a byte slice.

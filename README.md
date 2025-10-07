@@ -169,6 +169,68 @@ reqs, err := jsonrpc.NewBatchNotification(
 )
 ```
 
+## Performance
+
+This library is optimized for high-throughput server applications using several techniques:
+
+### Performance Profiles
+
+The library provides five performance profiles that allow you to choose the right trade-off between speed, safety, and compatibility:
+
+```go
+// Use balanced profile for production (recommended)
+jsonrpc.SetPerformanceProfile(jsonrpc.ProfileBalanced)
+
+// Or choose another profile based on your needs
+jsonrpc.SetPerformanceProfile(jsonrpc.ProfileFast)
+```
+
+**Available Profiles:**
+
+- **`ProfileDefault`** (default): Sonic's efficient defaults - recommended for most usess
+- **`ProfileCompatible`**: Mimics `encoding/json` behavior for a slower, but deterministic, output with sorted keys
+- **`ProfileBalanced`**: Safe performance optimizations, ~5-10% faster than default with effectively zero risk
+- **`ProfileFast`**: Sonic's `ConfigFastest` - skips some validation for internal services
+- **`ProfileAggressive`**: Maximum speed, minimum validation - only for experts with controlled input
+
+**Choosing a Profile:**
+
+| Profile | Best For | Performance | Safety |
+|---------|----------|-------------|--------|
+| **ProfileDefault** | General use, untrusted input | Baseline | High |
+| **ProfileCompatible** | Migration from encoding/json | Slower | High |
+| **ProfileBalanced** | Production apps | +5-10% | High |
+| **ProfileFast** | Internal services | +10-15% | Medium |
+| **ProfileAggressive** | HFT, real-time systems | +15-20% | Low |
+
+See [performance.go](performance.go) for detailed documentation on each profile.
+
+### Codec Pre-compilation (Enabled by Default)
+
+The library pre-compiles JSON codecs at startup using `sonic.Pretouch`, which eliminates JIT compilation overhead on the first marshal/unmarshal operation. This provides:
+
+- **80-99% improvement in first-call latency**: From ~1-5ms down to ~10-50μs
+- **Better P99 latency**: No unpredictable "warm-up" spike
+- **Small startup cost**: ~10-50ms additional initialization time
+
+**For CLI tools or single-shot programs**, this optimization can be disabled to avoid the startup cost:
+
+```bash
+go build -tags nopretouch
+```
+
+### Buffer Pooling
+
+Stream reading operations (`DecodeResponseFromReader`, `DecodeBatchRequestFromReader`, etc.) use `sync.Pool` for buffer reuse, reducing GC pressure in high-throughput scenarios.
+
+### Lazy Unmarshaling
+
+Response objects use lazy unmarshaling for ID and Error fields, deferring parsing until accessed. This is beneficial when handling large batches where you may not need to inspect every field.
+
+### ID Byte Caching
+
+Response IDs are marshaled once and cached, avoiding re-marshaling on every `MarshalJSON` or `WriteTo` call. This is most valuable when responses are marshaled multiple times (e.g., for caching or retries).
+
 ## Release Process
 
 See [release.yml](.github/workflows/release.yml) for the release process specifics.

@@ -39,7 +39,7 @@ fmt:
 
 bench:
 	@echo "==> Running benchmarks"
-	@go test -count=1 -bench=. -benchmem -benchtime=2s -run=^$ -v ./...
+	@go test -parallel=8 -cpu=8 -count=1 -bench=. -benchmem -benchtime=2s -run=^$ -v ./...
 
 lint:
 	@echo "==> Running golangci-lint"

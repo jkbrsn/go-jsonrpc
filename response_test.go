@@ -1067,7 +1067,7 @@ func TestResponse_LazyUnmarshalOnce(t *testing.T) {
 
 func TestResponse_Unmarshal(t *testing.T) {
 	t.Run("Unmarshal response with result", func(t *testing.T) {
-		resp, err := NewResponse(int64(1), map[string]string{"foo": "bar"})
+		resp, err := NewResponse(1, map[string]string{"foo": "bar"})
 		require.NoError(t, err)
 
 		var out map[string]any
@@ -1104,5 +1104,1209 @@ func TestResponse_Unmarshal(t *testing.T) {
 		err = resp.Unmarshal(nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "destination pointer cannot be nil")
+	})
+}
+
+func TestResponse_WriteTo(t *testing.T) {
+	t.Run("Response with result and string ID", func(t *testing.T) {
+		resp, err := NewResponse("test-id", map[string]string{"foo": "bar"})
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "test-id", out["id"])
+		assert.Equal(t, map[string]any{"foo": "bar"}, out["result"])
+	})
+
+	t.Run("Response with result and integer ID", func(t *testing.T) {
+		resp, err := NewResponse(42, "success")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(42), out["id"])
+		assert.Equal(t, "success", out["result"])
+	})
+
+	t.Run("Response with result and float ID", func(t *testing.T) {
+		resp, err := NewResponse(float64(3.14), true)
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(3.14), out["id"])
+		assert.Equal(t, true, out["result"])
+	})
+
+	t.Run("Response with result and nil ID", func(t *testing.T) {
+		resp, err := NewResponse(nil, "data")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Nil(t, out["id"])
+		assert.Equal(t, "data", out["result"])
+	})
+
+	t.Run("Response with error", func(t *testing.T) {
+		resp := NewErrorResponse("error-id", &Error{Code: -32000, Message: "test error"})
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "error-id", out["id"])
+
+		errMap, ok := out["error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, float64(-32000), errMap["code"])
+		assert.Equal(t, "test error", errMap["message"])
+	})
+
+	t.Run("Response with rawError", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc:  "2.0",
+			id:       int64(1),
+			rawError: []byte(`{"code":-32601,"message":"Method not found"}`),
+		}
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(1), out["id"])
+
+		errMap, ok := out["error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, float64(-32601), errMap["code"])
+		assert.Equal(t, "Method not found", errMap["message"])
+	})
+
+	t.Run("Response with rawID", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc: "2.0",
+			rawID:   json.RawMessage(`"raw-id"`),
+			result:  json.RawMessage(`"result"`),
+		}
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, "raw-id", out["id"])
+		assert.Equal(t, "result", out["result"])
+	})
+
+	t.Run("WriteTo produces same output as MarshalJSON", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			resp *Response
+		}{
+			{
+				name: "Response with result",
+				resp: func() *Response {
+					r, _ := NewResponse(1, map[string]string{"foo": "bar"})
+					return r
+				}(),
+			},
+			{
+				name: "Response with error",
+				resp: NewErrorResponse("error-id", &Error{Code: -32000, Message: "test"}),
+			},
+			{
+				name: "Response with nil ID",
+				resp: func() *Response {
+					r, _ := NewResponse(nil, "result")
+					return r
+				}(),
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				n, err := tc.resp.WriteTo(&buf)
+				require.NoError(t, err)
+				assert.Greater(t, n, int64(0))
+
+				marshaled, err := tc.resp.MarshalJSON()
+				require.NoError(t, err)
+
+				assert.JSONEq(t, string(marshaled), buf.String())
+			})
+		}
+	})
+
+	t.Run("Large response with WriteTo", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data here",
+			}
+		}
+
+		resp, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(10000))
+
+		var out map[string]any
+		err = json.Unmarshal(buf.Bytes(), &out)
+		require.NoError(t, err)
+
+		assert.Equal(t, "2.0", out["jsonrpc"])
+		assert.Equal(t, float64(1), out["id"])
+
+		resultSlice, ok := out["result"].([]any)
+		require.True(t, ok)
+		assert.Len(t, resultSlice, 1000)
+	})
+
+	t.Run("Invalid response validation fails", func(t *testing.T) {
+		resp := &Response{
+			jsonrpc: "1.0",
+			id:      int64(1),
+			result:  json.RawMessage(`"test"`),
+		}
+
+		var buf bytes.Buffer
+		_, err := resp.WriteTo(&buf)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid jsonrpc version")
+	})
+
+	t.Run("WriteTo returns correct byte count", func(t *testing.T) {
+		resp, err := NewResponse(1, "test")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(buf.Len()), n)
+	})
+}
+
+func TestResponse_PeekStringByPath(t *testing.T) {
+	t.Run("Extract top-level string field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"blockNumber": "0x1234",
+			"hash":        "0xabcdef",
+		})
+		require.NoError(t, err)
+
+		blockNum, err := resp.PeekStringByPath("blockNumber")
+		require.NoError(t, err)
+		assert.Equal(t, "0x1234", blockNum)
+
+		hash, err := resp.PeekStringByPath("hash")
+		require.NoError(t, err)
+		assert.Equal(t, "0xabcdef", hash)
+	})
+
+	t.Run("Extract nested string field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"transaction": map[string]any{
+				"from": "0x123",
+				"to":   "0x456",
+			},
+		})
+		require.NoError(t, err)
+
+		from, err := resp.PeekStringByPath("transaction", "from")
+		require.NoError(t, err)
+		assert.Equal(t, "0x123", from)
+
+		to, err := resp.PeekStringByPath("transaction", "to")
+		require.NoError(t, err)
+		assert.Equal(t, "0x456", to)
+	})
+
+	t.Run("Extract deeply nested field", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"level1": map[string]any{
+				"level2": map[string]any{
+					"level3": map[string]any{
+						"value": "deep",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		value, err := resp.PeekStringByPath("level1", "level2", "level3", "value")
+		require.NoError(t, err)
+		assert.Equal(t, "deep", value)
+	})
+
+	t.Run("No path returns entire result as string (if string)", func(t *testing.T) {
+		resp, err := NewResponse(1, "simple-string")
+		require.NoError(t, err)
+
+		value, err := resp.PeekStringByPath()
+		require.NoError(t, err)
+		assert.Equal(t, "simple-string", value)
+	})
+
+	t.Run("Error when response has no result", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "error"})
+
+		_, err := resp.PeekStringByPath("field")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no result field")
+	})
+
+	t.Run("Error when path not found", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+		})
+		require.NoError(t, err)
+
+		_, err = resp.PeekStringByPath("nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path not found")
+	})
+
+	t.Run("Number value gets converted to string by sonic", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"number": 42,
+		})
+		require.NoError(t, err)
+
+		// sonic's node.String() converts numbers to strings
+		val, err := resp.PeekStringByPath("number")
+		require.NoError(t, err)
+		assert.Equal(t, "42", val)
+	})
+
+	t.Run("AST node is cached for repeated calls", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+			"field2": "value2",
+			"field3": "value3",
+		})
+		require.NoError(t, err)
+
+		// First call builds AST
+		val1, err := resp.PeekStringByPath("field1")
+		require.NoError(t, err)
+		assert.Equal(t, "value1", val1)
+
+		// Subsequent calls reuse cached AST
+		val2, err := resp.PeekStringByPath("field2")
+		require.NoError(t, err)
+		assert.Equal(t, "value2", val2)
+
+		val3, err := resp.PeekStringByPath("field3")
+		require.NoError(t, err)
+		assert.Equal(t, "value3", val3)
+	})
+
+	t.Run("Thread-safe concurrent access", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"blockNumber": "0x1234",
+			"hash":        "0xabcdef",
+			"timestamp":   "0x999",
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(3)
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("blockNumber")
+				assert.NoError(t, err)
+				assert.Equal(t, "0x1234", val)
+			}()
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("hash")
+				assert.NoError(t, err)
+				assert.Equal(t, "0xabcdef", val)
+			}()
+			go func() {
+				defer wg.Done()
+				val, err := resp.PeekStringByPath("timestamp")
+				assert.NoError(t, err)
+				assert.Equal(t, "0x999", val)
+			}()
+		}
+		wg.Wait()
+	})
+}
+
+func TestResponse_PeekBytesByPath(t *testing.T) {
+	t.Run("Extract nested object as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"transaction": map[string]any{
+				"from":  "0x123",
+				"to":    "0x456",
+				"value": "1000",
+			},
+		})
+		require.NoError(t, err)
+
+		txBytes, err := resp.PeekBytesByPath("transaction")
+		require.NoError(t, err)
+
+		var tx map[string]string
+		err = json.Unmarshal(txBytes, &tx)
+		require.NoError(t, err)
+		assert.Equal(t, "0x123", tx["from"])
+		assert.Equal(t, "0x456", tx["to"])
+		assert.Equal(t, "1000", tx["value"])
+	})
+
+	t.Run("Extract array as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"logs": []any{
+				map[string]string{"event": "Transfer"},
+				map[string]string{"event": "Approval"},
+			},
+		})
+		require.NoError(t, err)
+
+		logsBytes, err := resp.PeekBytesByPath("logs")
+		require.NoError(t, err)
+
+		var logs []map[string]string
+		err = json.Unmarshal(logsBytes, &logs)
+		require.NoError(t, err)
+		assert.Len(t, logs, 2)
+		assert.Equal(t, "Transfer", logs[0]["event"])
+		assert.Equal(t, "Approval", logs[1]["event"])
+	})
+
+	t.Run("Extract primitive value as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"number": 42,
+		})
+		require.NoError(t, err)
+
+		numBytes, err := resp.PeekBytesByPath("number")
+		require.NoError(t, err)
+		assert.Equal(t, "42", string(numBytes))
+
+		var num int
+		err = json.Unmarshal(numBytes, &num)
+		require.NoError(t, err)
+		assert.Equal(t, 42, num)
+	})
+
+	t.Run("No path returns entire result as bytes", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{
+			"key": "value",
+		})
+		require.NoError(t, err)
+
+		resultBytes, err := resp.PeekBytesByPath()
+		require.NoError(t, err)
+
+		var result map[string]string
+		err = json.Unmarshal(resultBytes, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "value", result["key"])
+	})
+
+	t.Run("Error when response has no result", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "error"})
+
+		_, err := resp.PeekBytesByPath("field")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no result field")
+	})
+
+	t.Run("Error when path not found", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"field1": "value1",
+		})
+		require.NoError(t, err)
+
+		_, err = resp.PeekBytesByPath("nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path not found")
+	})
+
+	t.Run("Extract and unmarshal large nested structure", func(t *testing.T) {
+		largeBlock := map[string]any{
+			"blockNumber": "0x1234",
+			"transactions": []any{
+				map[string]string{"hash": "0xaaa", "from": "0x111"},
+				map[string]string{"hash": "0xbbb", "from": "0x222"},
+				map[string]string{"hash": "0xccc", "from": "0x333"},
+			},
+			"metadata": map[string]any{
+				"gasUsed":  "21000",
+				"gasLimit": "8000000",
+			},
+		}
+
+		resp, err := NewResponse(1, largeBlock)
+		require.NoError(t, err)
+
+		// Extract just the transactions array
+		txsBytes, err := resp.PeekBytesByPath("transactions")
+		require.NoError(t, err)
+
+		var txs []map[string]string
+		err = json.Unmarshal(txsBytes, &txs)
+		require.NoError(t, err)
+		assert.Len(t, txs, 3)
+		assert.Equal(t, "0xaaa", txs[0]["hash"])
+
+		// Extract just the metadata
+		metaBytes, err := resp.PeekBytesByPath("metadata")
+		require.NoError(t, err)
+
+		var meta map[string]string
+		err = json.Unmarshal(metaBytes, &meta)
+		require.NoError(t, err)
+		assert.Equal(t, "21000", meta["gasUsed"])
+	})
+
+	t.Run("Thread-safe concurrent access", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]any{
+			"obj1": map[string]string{"key": "value1"},
+			"obj2": map[string]string{"key": "value2"},
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				bytes, err := resp.PeekBytesByPath("obj1")
+				assert.NoError(t, err)
+				assert.Contains(t, string(bytes), "value1")
+			}()
+			go func() {
+				defer wg.Done()
+				bytes, err := resp.PeekBytesByPath("obj2")
+				assert.NoError(t, err)
+				assert.Contains(t, string(bytes), "value2")
+			}()
+		}
+		wg.Wait()
+	})
+}
+
+func TestResponse_Clone(t *testing.T) {
+	t.Run("Clone response with result", func(t *testing.T) {
+		original, err := NewResponse("test-id", map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+		require.NotNil(t, clone)
+
+		// Verify fields are equal
+		assert.Equal(t, original.Version(), clone.Version())
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, original.RawResult(), clone.RawResult())
+
+		// Verify they are equal using Equals
+		assert.True(t, original.Equals(clone))
+	})
+
+	t.Run("Clone response with error", func(t *testing.T) {
+		original := NewErrorResponse(int64(42), &Error{Code: -32000, Message: "test error"})
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+		require.NotNil(t, clone)
+
+		// Verify fields are equal
+		assert.Equal(t, original.Version(), clone.Version())
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+
+		// Verify they are equal using Equals
+		assert.True(t, original.Equals(clone))
+	})
+
+	t.Run("Clone with different ID types", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			id   any
+		}{
+			{"string ID", "string-id"},
+			{"int64 ID", int64(123)},
+			{"float64 ID", float64(3.14)},
+			{"nil ID", nil},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				original, err := NewResponse(tc.id, "result")
+				require.NoError(t, err)
+
+				clone, err := original.Clone()
+				require.NoError(t, err)
+
+				assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+				assert.True(t, original.Equals(clone))
+			})
+		}
+	})
+
+	t.Run("Deep copy - no shared byte slice references", func(t *testing.T) {
+		original, err := NewResponse(1, "original-result")
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify result byte slices are different
+		originalBytes := original.RawResult()
+		cloneBytes := clone.RawResult()
+
+		// Content should be equal
+		assert.Equal(t, originalBytes, cloneBytes)
+
+		// But slices should have different backing arrays
+		// Modify clone's bytes and verify original is unchanged
+		if len(cloneBytes) > 0 {
+			cloneBytes[0] = 'X'
+			assert.NotEqual(t, originalBytes[0], cloneBytes[0])
+		}
+	})
+
+	t.Run("Deep copy with rawID", func(t *testing.T) {
+		// Create response via decoding to ensure rawID is set
+		data := []byte(`{"jsonrpc":"2.0","id":"test-id","result":"data"}`)
+		original, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify rawID is copied
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+
+		// Modify clone and verify original is unaffected
+		cloneData, err := clone.MarshalJSON()
+		require.NoError(t, err)
+		assert.Contains(t, string(cloneData), "test-id")
+	})
+
+	t.Run("Deep copy with rawError", func(t *testing.T) {
+		// Create response via decoding to ensure rawError is set
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test"}}`)
+		original, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify error is copied
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+	})
+
+	t.Run("Clone preserves large result data", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data",
+			}
+		}
+
+		original, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		assert.True(t, original.Equals(clone))
+
+		// Verify we can unmarshal both independently
+		var originalResult []map[string]string
+		err = original.UnmarshalResult(&originalResult)
+		require.NoError(t, err)
+
+		var cloneResult []map[string]string
+		err = clone.UnmarshalResult(&cloneResult)
+		require.NoError(t, err)
+
+		assert.Equal(t, originalResult, cloneResult)
+		assert.Len(t, cloneResult, 1000)
+	})
+
+	t.Run("AST node cache is not shared", func(t *testing.T) {
+		original, err := NewResponse(1, map[string]string{
+			"field": "value",
+		})
+		require.NoError(t, err)
+
+		// Build AST node on original
+		val, err := original.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+
+		// Clone should not have AST node cached
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Clone should be able to build its own AST node
+		val, err = clone.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+	})
+
+	t.Run("Error on nil response", func(t *testing.T) {
+		var nilResp *Response
+		clone, err := nilResp.Clone()
+		require.Error(t, err)
+		assert.Nil(t, clone)
+		assert.Contains(t, err.Error(), "cannot clone nil response")
+	})
+
+	t.Run("Clone is independent - modifications don't affect original", func(t *testing.T) {
+		original, err := NewResponse("original-id", "original-result")
+		require.NoError(t, err)
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Get marshaled versions
+		originalJSON, err := original.MarshalJSON()
+		require.NoError(t, err)
+
+		cloneJSON, err := clone.MarshalJSON()
+		require.NoError(t, err)
+
+		// They should be equal
+		assert.JSONEq(t, string(originalJSON), string(cloneJSON))
+
+		// Verify independence by checking internal state
+		assert.Equal(t, original.IDOrNil(), clone.IDOrNil())
+		assert.Equal(t, string(original.RawResult()), string(clone.RawResult()))
+	})
+
+	t.Run("Clone with Error.Data field", func(t *testing.T) {
+		original := NewErrorResponse(1, &Error{
+			Code:    -32000,
+			Message: "error",
+			Data:    map[string]string{"detail": "extra info"},
+		})
+
+		clone, err := original.Clone()
+		require.NoError(t, err)
+
+		// Verify error data is copied
+		assert.Equal(t, original.Err().Code, clone.Err().Code)
+		assert.Equal(t, original.Err().Message, clone.Err().Message)
+		assert.Equal(t, original.Err().Data, clone.Err().Data)
+	})
+
+	t.Run("Clone respects immutability - concurrent cloning", func(t *testing.T) {
+		original, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		clones := make([]*Response, 100)
+
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				clone, err := original.Clone()
+				assert.NoError(t, err)
+				clones[idx] = clone
+			}(i)
+		}
+		wg.Wait()
+
+		// All clones should be equal to original
+		for i, clone := range clones {
+			assert.True(t, original.Equals(clone), "Clone %d should equal original", i)
+		}
+	})
+}
+
+func TestResponse_Size(t *testing.T) {
+	t.Run("Size of response with string result", func(t *testing.T) {
+		resp, err := NewResponse("test-id", "result-value")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+
+		// Verify size is close to marshaled size
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		actualSize := len(marshaled)
+
+		// Size should be within reasonable range (±10% of actual)
+		diff := actualSize - size
+		if diff < 0 {
+			diff = -diff
+		}
+		tolerance := actualSize / 10
+		assert.LessOrEqual(t, diff, tolerance,
+			"Size estimate %d should be within 10%% of actual size %d", size, actualSize)
+	})
+
+	t.Run("Size of response with integer ID", func(t *testing.T) {
+		resp, err := NewResponse(42, "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of response with float ID", func(t *testing.T) {
+		resp, err := NewResponse(float64(3.14), "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+	})
+
+	t.Run("Size of response with nil ID", func(t *testing.T) {
+		resp, err := NewResponse(nil, "data")
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of error response", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{Code: -32000, Message: "Method not found"})
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size of large response", func(t *testing.T) {
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some data here that adds to size",
+			}
+		}
+
+		resp, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		actualSize := len(marshaled)
+
+		// For large responses, size should be fairly accurate
+		assert.Greater(t, size, 10000, "Large response should have size > 10KB")
+		assert.InDelta(t, actualSize, size, float64(actualSize)*0.15)
+	})
+
+	t.Run("Size of nil response", func(t *testing.T) {
+		var nilResp *Response
+		size := nilResp.Size()
+		assert.Equal(t, 0, size)
+	})
+
+	t.Run("Size with different ID types", func(t *testing.T) {
+		testCases := []struct {
+			name string
+			id   any
+		}{
+			{"small int", int64(1)},
+			{"large int", int64(9223372036854775807)},
+			{"negative int", int64(-32000)},
+			{"zero int", int64(0)},
+			{"short string", "id"},
+			{"long string", "very-long-identifier-with-many-characters"},
+			{"float", float64(123.456)},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, err := NewResponse(tc.id, "result")
+				require.NoError(t, err)
+
+				size := resp.Size()
+				marshaled, err := resp.MarshalJSON()
+				require.NoError(t, err)
+
+				assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.2)
+			})
+		}
+	})
+
+	t.Run("Size with error containing Data", func(t *testing.T) {
+		resp := NewErrorResponse(1, &Error{
+			Code:    -32000,
+			Message: "Server error",
+			Data:    map[string]string{"detail": "additional information"},
+		})
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+	})
+
+	t.Run("Size accuracy for typical responses", func(t *testing.T) {
+		// Test several typical JSON-RPC responses
+		testCases := []struct {
+			name    string
+			resp    *Response
+			minSize int
+			maxSize int
+		}{
+			{
+				name: "eth_blockNumber response",
+				resp: func() *Response {
+					r, _ := NewResponse(1, "0x1234567")
+					return r
+				}(),
+				minSize: 40,
+				maxSize: 100,
+			},
+			{
+				name: "error response",
+				resp: NewErrorResponse("abc", &Error{
+					Code:    -32601,
+					Message: "Method not found",
+				}),
+				minSize: 60,
+				maxSize: 120,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				size := tc.resp.Size()
+				assert.GreaterOrEqual(t, size, tc.minSize)
+				assert.LessOrEqual(t, size, tc.maxSize)
+
+				// Compare with actual marshaled size
+				marshaled, err := tc.resp.MarshalJSON()
+				require.NoError(t, err)
+				actualSize := len(marshaled)
+
+				assert.InDelta(t, actualSize, size, float64(actualSize)*0.2)
+			})
+		}
+	})
+
+	t.Run("Size with rawID from decoding", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":"decoded-id","result":"data"}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		assert.Greater(t, size, 0)
+
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size with rawError from decoding", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"test error"}}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		size := resp.Size()
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.InDelta(t, len(marshaled), size, float64(len(marshaled))*0.15)
+	})
+
+	t.Run("Size is consistent across multiple calls", func(t *testing.T) {
+		resp, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		size1 := resp.Size()
+		size2 := resp.Size()
+		size3 := resp.Size()
+
+		assert.Equal(t, size1, size2)
+		assert.Equal(t, size2, size3)
+	})
+}
+
+func TestResponse_Free(t *testing.T) {
+	t.Run("Free releases byte slices", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{"key": "value"})
+		require.NoError(t, err)
+
+		// Verify fields are populated before Free
+		assert.NotNil(t, resp.RawResult())
+		assert.Greater(t, len(resp.RawResult()), 0)
+
+		// Call Free
+		resp.Free()
+
+		// Verify byte slices are nil
+		assert.Nil(t, resp.RawResult())
+	})
+
+	t.Run("Free keeps parsed values for logging", func(t *testing.T) {
+		resp, err := NewResponse(42, "test-data")
+		require.NoError(t, err)
+
+		// Force validation to normalize int to int64
+		_, err = resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Get ID after normalization
+		idBefore := resp.IDOrNil()
+		assert.Equal(t, int64(42), idBefore)
+
+		// Call Free
+		resp.Free()
+
+		// Verify parsed ID is still accessible
+		idAfter := resp.IDOrNil()
+		assert.Equal(t, int64(42), idAfter)
+	})
+
+	t.Run("Free on error response", func(t *testing.T) {
+		resp := NewErrorResponse("test-id", &Error{
+			Code:    -32000,
+			Message: "test error",
+			Data:    map[string]string{"detail": "extra"},
+		})
+
+		// Verify error is accessible before Free
+		assert.NotNil(t, resp.Err())
+		assert.Equal(t, -32000, resp.Err().Code)
+
+		// Call Free
+		resp.Free()
+
+		// Verify error is still accessible for logging
+		assert.NotNil(t, resp.Err())
+		assert.Equal(t, -32000, resp.Err().Code)
+		assert.Equal(t, "test error", resp.Err().Message)
+	})
+
+	t.Run("Free releases AST cache", func(t *testing.T) {
+		resp, err := NewResponse(1, map[string]string{"field": "value"})
+		require.NoError(t, err)
+
+		// Build AST cache
+		val, err := resp.PeekStringByPath("field")
+		require.NoError(t, err)
+		assert.Equal(t, "value", val)
+
+		// Call Free
+		resp.Free()
+
+		// AST node should be released (zero value)
+		// After Free, result is nil, so PeekStringByPath should fail
+		// or return an error due to invalid AST
+		_, err = resp.PeekStringByPath("field")
+		require.Error(t, err)
+		// Error could be "no result field" or "path not found" depending on AST state
+	})
+
+	t.Run("Free on nil response is safe", func(t *testing.T) {
+		var resp *Response
+		assert.NotPanics(t, func() {
+			resp.Free()
+		})
+	})
+
+	t.Run("Free with rawID and rawError fields", func(t *testing.T) {
+		// Create a response by unmarshaling (which populates rawID, rawError)
+		data := []byte(`{"jsonrpc":"2.0","id":"test-id","error":{"code":-32000,"message":"error"}}`)
+		resp, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		// IDRaw() triggers unmarshal, which populates r.id from r.rawID
+		// So IDRaw() returns the parsed ID, not the raw bytes
+		idBefore := resp.IDOrNil()
+		assert.Equal(t, "test-id", idBefore)
+
+		// Call Free - releases rawID but keeps r.id
+		resp.Free()
+
+		// IDOrNil still returns the parsed value (kept for logging)
+		idAfter := resp.IDOrNil()
+		assert.Equal(t, "test-id", idAfter)
+	})
+
+	t.Run("Marshal fails after Free", func(t *testing.T) {
+		resp, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		// Marshal should work before Free
+		_, err = resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Call Free
+		resp.Free()
+
+		// Marshal should fail after Free (no result field)
+		_, err = resp.MarshalJSON()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "response must contain either result or error")
+	})
+
+	t.Run("WriteTo fails after Free", func(t *testing.T) {
+		resp, err := NewResponse(1, "test")
+		require.NoError(t, err)
+
+		// WriteTo should work before Free
+		var buf bytes.Buffer
+		_, err = resp.WriteTo(&buf)
+		require.NoError(t, err)
+
+		// Call Free
+		resp.Free()
+
+		// WriteTo should fail after Free
+		buf.Reset()
+		_, err = resp.WriteTo(&buf)
+		require.Error(t, err)
+	})
+
+	t.Run("Free releases memory for large responses", func(t *testing.T) {
+		// Create a large response
+		largeData := make([]map[string]string, 1000)
+		for i := range largeData {
+			largeData[i] = map[string]string{
+				"index": fmt.Sprintf("%d", i),
+				"data":  "some large data here that uses significant memory",
+			}
+		}
+
+		resp, err := NewResponse(1, largeData)
+		require.NoError(t, err)
+
+		// Verify result is large
+		resultSize := len(resp.RawResult())
+		assert.Greater(t, resultSize, 10000)
+
+		// Call Free
+		resp.Free()
+
+		// Verify result is released
+		assert.Nil(t, resp.RawResult())
+	})
+
+	t.Run("Multiple Free calls are safe", func(t *testing.T) {
+		resp, err := NewResponse(1, "data")
+		require.NoError(t, err)
+
+		// Call Free multiple times
+		assert.NotPanics(t, func() {
+			resp.Free()
+			resp.Free()
+			resp.Free()
+		})
+	})
+}
+
+func TestResponse_IntToInt64Normalization(t *testing.T) {
+	t.Run("int ID is normalized to int64", func(t *testing.T) {
+		// Use plain int literal
+		resp, err := NewResponse(42, "data")
+		require.NoError(t, err)
+
+		// Should be normalized to int64 after validation
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+
+		// Verify it marshals correctly
+		assert.Contains(t, string(marshaled), `"id":42`)
+
+		// Verify IDOrNil returns int64
+		id := resp.IDOrNil()
+		assert.Equal(t, int64(42), id)
+		assert.IsType(t, int64(0), id)
+	})
+
+	t.Run("int ID in NewErrorResponse", func(t *testing.T) {
+		resp := NewErrorResponse(123, &Error{Code: -32000, Message: "error"})
+
+		marshaled, err := resp.MarshalJSON()
+		require.NoError(t, err)
+		assert.Contains(t, string(marshaled), `"id":123`)
+
+		id := resp.IDOrNil()
+		assert.Equal(t, int64(123), id)
+		assert.IsType(t, int64(0), id)
+	})
+
+	t.Run("WriteTo works with int ID", func(t *testing.T) {
+		resp, err := NewResponse(999, "test")
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+		n, err := resp.WriteTo(&buf)
+		require.NoError(t, err)
+		assert.Greater(t, n, int64(0))
+
+		assert.Contains(t, buf.String(), `"id":999`)
 	})
 }
