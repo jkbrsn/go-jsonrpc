@@ -106,9 +106,13 @@ func (r *Response) Version() string {
 }
 
 // Err returns the error from the response. If there is no error, nil is returned.
-// TODO: don't silently ignore errors
 func (r *Response) Err() *Error {
-	_ = r.UnmarshalError()
+	if err := r.UnmarshalError(); err != nil {
+		return &Error{
+			Code:    ServerSideException,
+			Message: "failed to unmarshal error",
+		}
+	}
 	return r.err
 }
 
@@ -128,9 +132,9 @@ func (r *Response) IDOrNil() any {
 }
 
 // IDString returns the ID as a string.
-// TODO: call IDOrNil first, to unmarshal?
 func (r *Response) IDString() string {
-	switch id := r.id.(type) {
+	id := r.IDOrNil()
+	switch id := id.(type) {
 	case string:
 		return id
 	case int64:

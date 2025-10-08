@@ -17,19 +17,19 @@ const (
 	decimalBase            = 10 // base 10 for digit counting
 )
 
-// Clone creates a copy of the response, ensuring no shared references between the original and the
-// clone.
+// Clone creates a copy of the response with minimal shared state.
 //
-// The clone includes:
-//   - Deep copies of all byte slices
-//   - Copies of parsed values (id, err)
-//   - A fresh jsonrpc version string
+// Deep copies:
+//   - rawID, rawError, result byte slices
+//   - Error struct
 //
-// The clone does NOT include:
-//   - Cached AST nodes
-//   - Sync primitives (fresh Once guards are created)
+// Shallow copies type any fields:
+//   - id field
+//   - Error.Data field
 //
-// TODO: verify what's correct
+// Not copied:
+//   - AST cache (clone starts with empty cache)
+//   - Sync primitives (fresh Once and Mutex created)
 func (r *Response) Clone() (*Response, error) {
 	if r == nil {
 		return nil, errors.New("cannot clone nil response")
@@ -39,7 +39,7 @@ func (r *Response) Clone() (*Response, error) {
 		jsonrpc: r.jsonrpc,
 	}
 
-	// Deep copy ID
+	// Shallow copy ID (safe for primitives, pointers will be shared)
 	clone.id = r.id
 
 	// Deep copy rawID byte slice
@@ -48,12 +48,12 @@ func (r *Response) Clone() (*Response, error) {
 		copy(clone.rawID, r.rawID)
 	}
 
-	// Deep copy Error
+	// Copy Error
 	if r.err != nil {
 		clone.err = &Error{
 			Code:    r.err.Code,
 			Message: r.err.Message,
-			Data:    r.err.Data, // Data is any, shallow copy
+			Data:    r.err.Data, // Shallow copy
 		}
 	}
 
