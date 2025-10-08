@@ -1,10 +1,10 @@
 package jsonrpc
 
 import (
-	"encoding/json" // Used for json.RawMessage type
+	"encoding/json"
 	"errors"
 
-	"github.com/bytedance/sonic/ast" // AST for zero-copy JSON traversal
+	"github.com/bytedance/sonic/ast"
 )
 
 const (
@@ -17,12 +17,11 @@ const (
 	decimalBase            = 10 // base 10 for digit counting
 )
 
-// Clone creates a deep copy of the response, ensuring no shared references between the original
-// and the clone. This is useful when deriving new responses or when middleware needs to modify
-// responses without affecting the original.
+// Clone creates a copy of the response, ensuring no shared references between the original and the
+// clone.
 //
 // The clone includes:
-//   - Deep copies of all byte slices (rawID, rawError, result)
+//   - Deep copies of all byte slices
 //   - Copies of parsed values (id, err)
 //   - A fresh jsonrpc version string
 //
@@ -30,13 +29,7 @@ const (
 //   - Cached AST nodes
 //   - Sync primitives (fresh Once guards are created)
 //
-// Example usage:
-//
-//	original, _ := NewResponse(1, "data")
-//	clone, err := original.Clone()
-//	if err != nil {
-//	    return err
-//	}
+// TODO: verify what's correct
 func (r *Response) Clone() (*Response, error) {
 	if r == nil {
 		return nil, errors.New("cannot clone nil response")
@@ -47,8 +40,6 @@ func (r *Response) Clone() (*Response, error) {
 	}
 
 	// Deep copy ID
-	// For primitive types (string, int64, float64), direct assignment is sufficient
-	// as these are value types or immutable
 	clone.id = r.id
 
 	// Deep copy rawID byte slice
@@ -81,23 +72,7 @@ func (r *Response) Clone() (*Response, error) {
 	return clone, nil
 }
 
-// Free releases heavy memory-retaining fields after the response has been consumed.
-// This is useful for long-running services, to prevent memory leaks from retained buffers.
-//
-// After calling Free:
-//   - All byte slices (rawID, rawError, result) are released
-//   - Cached AST nodes are released
-//   - Parsed values (id, err) are kept for logging purposes
-//   - The response should not be used for marshaling or field access
-//   - Concurrent use after Free is unsafe
-//
-// Example usage:
-//
-//	response, _ := DecodeResponse(data)
-//	// Use response
-//	json.NewEncoder(w).Encode(response)
-//	// Explicitly free when done
-//	response.Free()
+// Free releases memory-retaining fields. Only use after consuming the response.
 func (r *Response) Free() {
 	if r == nil {
 		return
@@ -112,27 +87,10 @@ func (r *Response) Free() {
 	r.astErr = nil
 	r.astMutex.Unlock()
 
-	// Note: We keep r.id and r.err for logging purposes (typically small values)
+	// Note: we keep r.id and r.err for logging purposes (typically small values)
 }
 
 // Size returns the approximate serialized size of the response in bytes.
-// This is useful for metrics, logging, and deciding whether to buffer or stream responses.
-//
-// The calculation includes:
-//   - JSON structure overhead (opening/closing braces, field names, colons, commas)
-//   - ID field size (or "null" if not present)
-//   - Error field size (if present)
-//   - Result field size (if present)
-//
-// The returned size is an approximation and may differ slightly from the actual
-// marshaled size due to formatting differences, but is accurate enough for
-// practical purposes like logging and metrics.
-//
-// Example usage:
-//
-//	if response.Size() > 1024*1024 {
-//	    log.Warn("Large response detected", "size", response.Size())
-//	}
 func (r *Response) Size() int {
 	if r == nil {
 		return 0

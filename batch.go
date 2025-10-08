@@ -2,7 +2,6 @@ package jsonrpc
 
 import (
 	"bytes"
-	// Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"encoding/json"
 	"errors"
 	"fmt"

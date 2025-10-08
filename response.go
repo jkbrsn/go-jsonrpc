@@ -2,34 +2,27 @@ package jsonrpc
 
 import (
 	"bytes"
-	"encoding/json" // Used for json.RawMessage type
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 
-	"github.com/bytedance/sonic/ast" // AST for zero-copy JSON traversal
+	"github.com/bytedance/sonic/ast"
 )
 
 // Response is a struct for JSON-RPC responses conforming to the JSON-RPC 2.0 specification.
 // Response instances are immutable after decoding and safe for concurrent reads.
-// All fields are unexported to enforce immutability. Use getter methods to access field values.
 //
-// The Response type uses lazy unmarshaling for the ID and Error fields to optimize performance.
-// These fields are unmarshaled on first access via IDOrNil() or Err() respectively.
+// The Response type uses lazy unmarshaling for the id and error fields to optimize performance.
 type Response struct {
+	// Immutable data fields
 	jsonrpc string
-
-	// Immutable fields (set once during decode, never modified)
-	// Access via getter methods: IDOrNil(), Err(), RawResult()
-	id     any
-	err    *Error
-	result json.RawMessage
+	id      any
+	err     *Error
+	result  json.RawMessage
 
 	// Internal fields for lazy unmarshaling and caching
-	// rawID serves dual purpose:
-	// 1. Stores raw ID bytes from incoming JSON (unmarshal path)
-	// 2. Caches marshaled ID bytes for outgoing JSON (marshal path)
 	rawID    json.RawMessage
 	rawError json.RawMessage
 
@@ -38,46 +31,104 @@ type Response struct {
 	errOnce sync.Once
 
 	// AST node caching for efficient field access
-	// Lazily built on first PeekByPath call, cached for subsequent calls
 	astNode  ast.Node
 	astOnce  sync.Once
 	astMutex sync.RWMutex
 	astErr   error
 }
 
-// Version returns the JSON-RPC protocol version (always "2.0" for valid responses).
+// NewResponse creates a JSON-RPC 2.0 response with a result.
+func NewResponse(id any, result any) (*Response, error) {
+	resultBytes, err := getSonicAPI().Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	// Pre-marshal the ID to cache it for later use
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, err := getSonicAPI().Marshal(id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal id: %w", err)
+		}
+		rawID = idBytes
+	}
+
+	return &Response{
+		jsonrpc: jsonRPCVersion,
+		id:      id,
+		rawID:   rawID,
+		result:  resultBytes,
+	}, nil
+}
+
+// NewResponseFromRaw creates a JSON-RPC 2.0 response with a raw result.
+func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, err := getSonicAPI().Marshal(id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal id: %w", err)
+		}
+		rawID = idBytes
+	}
+
+	return &Response{
+		jsonrpc: jsonRPCVersion,
+		id:      id,
+		rawID:   rawID,
+		result:  rawResult,
+	}, nil
+}
+
+// NewErrorResponse creates a JSON-RPC 2.0 error response.
+func NewErrorResponse(id any, err *Error) *Response {
+	var rawID json.RawMessage
+	if id != nil {
+		idBytes, marshalErr := getSonicAPI().Marshal(id)
+		if marshalErr == nil {
+			rawID = idBytes
+		}
+		// If marshal fails, rawID remains nil and MarshalJSON will handle it
+	}
+
+	return &Response{
+		jsonrpc: jsonRPCVersion,
+		id:      id,
+		rawID:   rawID,
+		err:     err,
+	}
+}
+
+// Version returns the JSON-RPC protocol version.
 func (r *Response) Version() string {
 	return r.jsonrpc
 }
 
-// Err returns the error from the response, if any.
-// The error is unmarshaled lazily on first call and cached for subsequent calls.
-// This method is safe for concurrent use.
+// Err returns the error from the response. If there is no error, nil is returned.
+// TODO: don't silently ignore errors
 func (r *Response) Err() *Error {
 	_ = r.UnmarshalError()
 	return r.err
 }
 
 // RawResult returns the raw JSON-encoded result bytes.
-// For string results, this includes the JSON quotes (e.g., "result" not result).
-// Use UnmarshalResult to decode the result into a specific type.
+// Note: for string results, this includes the JSON quotes (e.g., "result" not result).
 func (r *Response) RawResult() json.RawMessage {
 	return r.result
 }
 
 // IDOrNil returns the unmarshaled ID, or nil if unmarshaling fails.
-// The ID is unmarshaled lazily on first call and cached for subsequent
-// calls. This method is safe for concurrent use.
 func (r *Response) IDOrNil() any {
 	r.idOnce.Do(func() {
 		// Ignore error - validation happens during decode
-		// If unmarshal fails, ID remains nil
 		_ = r.unmarshalID()
 	})
 	return r.id
 }
 
 // IDString returns the ID as a string.
+// TODO: call IDOrNil first, to unmarshal?
 func (r *Response) IDString() string {
 	switch id := r.id.(type) {
 	case string:
@@ -91,7 +142,12 @@ func (r *Response) IDString() string {
 	}
 }
 
-// Validate checks if the JSON-RPC response conforms to the JSON-RPC specification.
+// String returns a string representation of the JSON-RPC response.
+func (r *Response) String() string {
+	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.id, r.err, len(r.result))
+}
+
+// Validate checks if the Response conforms to the JSON-RPC specification.
 func (r *Response) Validate() error {
 	if r == nil {
 		return errors.New("response is nil")
@@ -122,9 +178,7 @@ func (r *Response) Validate() error {
 	return nil
 }
 
-// Equals compares the contents of two JSON-RPC responses.
-// This method handles both eagerly and lazily unmarshaled responses by ensuring
-// both IDs and Errors are unmarshaled before comparison.
+// Equals compares the contents of this Response with another Response.
 func (r *Response) Equals(other *Response) bool {
 	if r == nil || other == nil {
 		return false
@@ -133,8 +187,7 @@ func (r *Response) Equals(other *Response) bool {
 		return false
 	}
 
-	// Ensure both IDs are unmarshaled before comparing (if they have rawID set)
-	// IDOrNil() uses sync.Once internally to unmarshal lazily
+	// Ensure both IDs are unmarshaled before comparing
 	rID := r.IDOrNil()
 	otherID := other.IDOrNil()
 
@@ -159,24 +212,17 @@ func (r *Response) Equals(other *Response) bool {
 	return true
 }
 
-// IsEmpty returns whether the JSON-RPC response can be considered empty.
+// IsEmpty returns whether the Response can be considered empty.
 //
-// This method is primarily used to detect responses that carry no meaningful data, such as
-// responses from notification requests (which shouldn't exist per spec) or placeholder responses.
-//
-// A response is considered empty when BOTH the error and result are empty:
+// A JSON-RPC response is considered empty when BOTH the error and result are empty:
 //   - Result is empty if: empty byte slice, null, empty string (""), empty array ([]),
 //     empty object ({}), or hex zero value ("0x")
 //   - Error is empty if: nil, or has both code=0 and message=""
-//
-// The specific byte pattern checks (null, "0x", etc.) handle common JSON-RPC conventions
-// where these values represent "no data" semantically.
 func (r *Response) IsEmpty() bool {
 	if r == nil {
 		return true
 	}
 
-	// Case: both error and result are empty
 	if r.err == nil && len(r.result) == 0 {
 		return true
 	}
@@ -185,11 +231,6 @@ func (r *Response) IsEmpty() bool {
 	emptyResult := isEmptyResult(r.result)
 
 	return emptyError && emptyResult
-}
-
-// String returns a string representation of the JSON-RPC response.
-func (r *Response) String() string {
-	return fmt.Sprintf("ID: %v, Error: %v, Result byte size: %d", r.id, r.err, len(r.result))
 }
 
 // isEmptyResult checks if a raw JSON result is considered empty.
@@ -258,69 +299,4 @@ func DecodeResponseFromReader(r io.Reader, expectedSize int) (*Response, error) 
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	return resp, nil
-}
-
-// NewResponse creates a JSON-RPC 2.0 response with a result.
-func NewResponse(id any, result any) (*Response, error) {
-	resultBytes, err := getSonicAPI().Marshal(result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	// Pre-marshal the ID to cache it for later use
-	var rawID json.RawMessage
-	if id != nil {
-		idBytes, err := getSonicAPI().Marshal(id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal id: %w", err)
-		}
-		rawID = idBytes
-	}
-
-	return &Response{
-		jsonrpc: jsonRPCVersion,
-		id:      id,
-		rawID:   rawID,
-		result:  resultBytes,
-	}, nil
-}
-
-// NewResponseFromRaw creates a JSON-RPC 2.0 response with a raw result.
-func NewResponseFromRaw(id any, rawResult json.RawMessage) (*Response, error) {
-	// Pre-marshal the ID to cache it for later use
-	var rawID json.RawMessage
-	if id != nil {
-		idBytes, err := getSonicAPI().Marshal(id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal id: %w", err)
-		}
-		rawID = idBytes
-	}
-
-	return &Response{
-		jsonrpc: jsonRPCVersion,
-		id:      id,
-		rawID:   rawID,
-		result:  rawResult,
-	}, nil
-}
-
-// NewErrorResponse creates a JSON-RPC 2.0 error response.
-func NewErrorResponse(id any, err *Error) *Response {
-	// Pre-marshal the ID to cache it for later use
-	var rawID json.RawMessage
-	if id != nil {
-		idBytes, marshalErr := getSonicAPI().Marshal(id)
-		if marshalErr == nil {
-			rawID = idBytes
-		}
-		// If marshal fails, rawID remains nil and MarshalJSON will handle it
-	}
-
-	return &Response{
-		jsonrpc: jsonRPCVersion,
-		id:      id,
-		rawID:   rawID,
-		err:     err,
-	}
 }
