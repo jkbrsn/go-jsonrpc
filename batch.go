@@ -2,26 +2,22 @@ package jsonrpc
 
 import (
 	"bytes"
-	// Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 )
 
-// isBatchJSON returns true if the trimmed data starts with '[',
-// indicating a batch request/response.
+// isBatchJSON returns true if the trimmed data starts with '[', indicating a JSON array.
 func isBatchJSON(data []byte) bool {
 	trimmed := bytes.TrimSpace(data)
 	return len(trimmed) > 0 && trimmed[0] == '['
 }
 
 // DecodeRequestOrBatch attempts to parse either a single request or a batch of requests.
-// Returns (requests, isBatch, error).
-// - For single requests: returns slice with one element, isBatch=false
-// - For batch requests: returns slice with multiple elements, isBatch=true
-// - Empty batches are rejected per JSON-RPC 2.0 spec
-func DecodeRequestOrBatch(data []byte) ([]*Request, bool, error) {
+// - For single requests: returns slice with one element
+// - For batch requests: returns slice with multiple elements
+func DecodeRequestOrBatch(data []byte) (reqs []*Request, isBatch bool, err error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, false, errors.New(errEmptyData)
 	}
@@ -39,8 +35,9 @@ func DecodeRequestOrBatch(data []byte) ([]*Request, bool, error) {
 }
 
 // DecodeResponseOrBatch attempts to parse either a single response or a batch of responses.
-// Returns (responses, isBatch, error).
-func DecodeResponseOrBatch(data []byte) ([]*Response, bool, error) {
+// - For single responses: returns slice with one element
+// - For batch responses: returns slice with multiple elements
+func DecodeResponseOrBatch(data []byte) (resps []*Response, isBatch bool, err error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, false, errors.New(errEmptyData)
 	}
@@ -60,7 +57,7 @@ func DecodeResponseOrBatch(data []byte) ([]*Response, bool, error) {
 // DecodeBatchRequest parses a JSON-RPC batch request from a byte slice.
 // Returns an error if:
 // - Input is not a JSON array
-// - Array is empty (per JSON-RPC 2.0 spec: "The Server should respond with an error")
+// - Array is empty
 // - Any element fails to parse as a valid Request
 func DecodeBatchRequest(data []byte) ([]*Request, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -73,7 +70,7 @@ func DecodeBatchRequest(data []byte) ([]*Request, error) {
 		return nil, fmt.Errorf("invalid batch format: %w", err)
 	}
 
-	// Spec requires non-empty batches
+	// JSON-RPC 2.0 spec requires non-empty batches
 	if len(rawMessages) == 0 {
 		return nil, errors.New("batch request must contain at least one request")
 	}
@@ -91,7 +88,7 @@ func DecodeBatchRequest(data []byte) ([]*Request, error) {
 	return requests, nil
 }
 
-// EncodeBatchRequest marshals a slice of JSON-RPC requests into a batch (JSON array).
+// EncodeBatchRequest marshals a slice of JSON-RPC requests into a batch.
 // Returns an error if:
 // - Input slice is empty
 // - Any request fails validation
@@ -144,7 +141,7 @@ func DecodeBatchResponse(data []byte) ([]*Response, error) {
 	return responses, nil
 }
 
-// EncodeBatchResponse marshals a slice of JSON-RPC responses into a batch (JSON array).
+// EncodeBatchResponse marshals a slice of JSON-RPC responses into a batch.
 // Returns an error if:
 // - Input slice is empty
 // - Any response fails validation

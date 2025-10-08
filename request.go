@@ -4,19 +4,47 @@ package jsonrpc
 
 import (
 	"bytes"
-	// Used for json.RawMessage type, which provides interop with stdlib encoding/json
 	"encoding/json"
 	"errors"
 	"fmt"
 )
 
-// Request is a struct for a JSON-RPC request. It conforms to the JSON-RPC 2.0 specification, with
-// minor exceptions. E.g. the ID field is allowed to be fractional in this implementation.
+// Request is a struct for a JSON-RPC request. It conforms to the JSON-RPC 2.0 specification except
+// that the ID field is allowed to be fractional.
 type Request struct {
 	JSONRPC string `json:"jsonrpc"`
 	ID      any    `json:"id,omitempty"`
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
+}
+
+// NewRequest creates a JSON-RPC 2.0 request with an auto-generated ID.
+func NewRequest(method string, params any) *Request {
+	return &Request{
+		JSONRPC: jsonRPCVersion,
+		ID:      RandomJSONRPCID(),
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// NewRequestWithID creates a JSON-RPC 2.0 request with a specific ID.
+func NewRequestWithID(method string, params any, id any) *Request {
+	return &Request{
+		JSONRPC: jsonRPCVersion,
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// NewNotification creates a JSON-RPC 2.0 notification (request without ID).
+func NewNotification(method string, params any) *Request {
+	return &Request{
+		JSONRPC: jsonRPCVersion,
+		Method:  method,
+		Params:  params,
+	}
 }
 
 // IDString returns the ID as a string.
@@ -33,8 +61,8 @@ func (r *Request) IDString() string {
 	}
 }
 
-// IsEmpty returns whether the Request can be considered empty. A request is considered empty if
-// the method field is empty.
+// IsEmpty returns whether the Request is empty. A request is considered empty if the method field
+// is empty.
 func (r *Request) IsEmpty() bool {
 	if r == nil {
 		return true
@@ -47,7 +75,12 @@ func (r *Request) IsEmpty() bool {
 	return false
 }
 
-// MarshalJSON marshals a JSON-RPC request.
+// IsNotification returns true if this is a notification (no ID expected).
+func (r *Request) IsNotification() bool {
+	return r.ID == nil
+}
+
+// MarshalJSON marshals the Request to a JSON byte slice.
 func (r *Request) MarshalJSON() ([]byte, error) {
 	err := r.Validate()
 	if err != nil {
@@ -62,6 +95,79 @@ func (r *Request) MarshalJSON() ([]byte, error) {
 // Note: implements the fmt.Stringer interface.
 func (r *Request) String() string {
 	return fmt.Sprintf("ID: %v, Method: %s", r.ID, r.Method)
+}
+
+// Validate checks if the JSON-RPC request conforms to the JSON-RPC specification.
+func (r *Request) Validate() error {
+	if r == nil {
+		return errors.New("request is nil")
+	}
+	if r.JSONRPC != jsonRPCVersion {
+		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
+	}
+	if r.Method == "" {
+		return errors.New("method field is required")
+	}
+
+	// Check for reserved "rpc." prefix (JSON-RPC 2.0 spec)
+	if len(r.Method) >= 4 && r.Method[:4] == "rpc." {
+		return errors.New("method names starting with 'rpc.' are reserved by JSON-RPC 2.0 spec")
+	}
+
+	switch r.ID.(type) {
+	case nil, string, int64, float64:
+	default:
+		return errors.New("id field must be a string or a number")
+	}
+	switch r.Params.(type) {
+	case nil, []any, map[string]any:
+	default:
+		return errors.New("params field must be either an array, an object, or nil")
+	}
+
+	return nil
+}
+
+// UnmarshalJSON unmarshals a JSON-RPC request from a JSON byte slice.
+func (r *Request) UnmarshalJSON(data []byte) error {
+	// Auxiliary type mapping to the Request structure, but with raw fields
+	type requestAux struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Method  string          `json:"method"`
+		Params  json.RawMessage `json:"params,omitempty"`
+	}
+
+	var aux requestAux
+	if err := getSonicAPI().Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.JSONRPC != jsonRPCVersion {
+		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
+	}
+	r.JSONRPC = aux.JSONRPC
+
+	if aux.Method == "" {
+		return errors.New("method field is required")
+	}
+	r.Method = aux.Method
+
+	// Unmarshal and validate the id field
+	id, err := unmarshalRequestID(aux.ID)
+	if err != nil {
+		return err
+	}
+	r.ID = id
+
+	// Unmarshal and validate the params field
+	params, err := unmarshalRequestParams(aux.Params)
+	if err != nil {
+		return err
+	}
+	r.Params = params
+
+	return nil
 }
 
 // unmarshalRequestID unmarshals and normalizes the ID field from raw JSON.
@@ -121,114 +227,6 @@ func unmarshalRequestParams(rawParams json.RawMessage) (any, error) {
 	default:
 		return nil, errors.New("params field must be either an array, an object, or nil")
 	}
-}
-
-// UnmarshalJSON unmarshals a JSON-RPC request. The function takes two custom actions; sets the
-// JSON-RPC version to 2.0 and unmarshals the ID separately, to handle both string and float64 IDs.
-func (r *Request) UnmarshalJSON(data []byte) error {
-	// Define an auxiliary type that maps to the JSON-RPC request structure, but with raw fields
-	type requestAux struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Method  string          `json:"method"`
-		Params  json.RawMessage `json:"params,omitempty"`
-	}
-
-	var aux requestAux
-	if err := getSonicAPI().Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	if aux.JSONRPC != jsonRPCVersion {
-		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
-	}
-	r.JSONRPC = aux.JSONRPC
-
-	if aux.Method == "" {
-		return errors.New("method field is required")
-	}
-	r.Method = aux.Method
-
-	// Unmarshal and validate the id field
-	id, err := unmarshalRequestID(aux.ID)
-	if err != nil {
-		return err
-	}
-	r.ID = id
-
-	// Unmarshal and validate the params field
-	params, err := unmarshalRequestParams(aux.Params)
-	if err != nil {
-		return err
-	}
-	r.Params = params
-
-	return nil
-}
-
-// Validate checks if the JSON-RPC request conforms to the JSON-RPC specification.
-func (r *Request) Validate() error {
-	if r == nil {
-		return errors.New("request is nil")
-	}
-	if r.JSONRPC != jsonRPCVersion {
-		return errors.New("jsonrpc field is required to be exactly \"2.0\"")
-	}
-	if r.Method == "" {
-		return errors.New("method field is required")
-	}
-
-	// Check for reserved "rpc." prefix (JSON-RPC 2.0 spec)
-	if len(r.Method) >= 4 && r.Method[:4] == "rpc." {
-		return errors.New("method names starting with 'rpc.' are reserved by JSON-RPC 2.0 spec")
-	}
-
-	switch r.ID.(type) {
-	case nil, string, int64, float64:
-	default:
-		return errors.New("id field must be a string or a number")
-	}
-	switch r.Params.(type) {
-	case nil, []any, map[string]any:
-	default:
-		return errors.New("params field must be either an array, an object, or nil")
-	}
-
-	return nil
-}
-
-// NewRequest creates a JSON-RPC 2.0 request with an auto-generated ID.
-func NewRequest(method string, params any) *Request {
-	return &Request{
-		JSONRPC: jsonRPCVersion,
-		ID:      RandomJSONRPCID(),
-		Method:  method,
-		Params:  params,
-	}
-}
-
-// NewRequestWithID creates a JSON-RPC 2.0 request with a specific ID.
-func NewRequestWithID(method string, params any, id any) *Request {
-	return &Request{
-		JSONRPC: jsonRPCVersion,
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	}
-}
-
-// NewNotification creates a JSON-RPC 2.0 notification (request without ID).
-func NewNotification(method string, params any) *Request {
-	return &Request{
-		JSONRPC: jsonRPCVersion,
-		Method:  method,
-		Params:  params,
-	}
-}
-
-// IsNotification returns true if this is a notification (no ID expected).
-func (r *Request) IsNotification() bool {
-	return r.ID == nil
 }
 
 // UnmarshalParams decodes the Params field into the provided destination pointer.

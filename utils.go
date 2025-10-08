@@ -22,18 +22,17 @@ var bufferPool = sync.Pool{
 	},
 }
 
-// getBuffer retrieves a buffer from the pool.
+// getBuffer retrieves a buffer from the pool
 func getBuffer() *[]byte {
 	buf, ok := bufferPool.Get().(*[]byte)
 	if !ok {
-		// This should never happen, but satisfy the linter
 		newBuf := make([]byte, 0, 16*1024)
 		return &newBuf
 	}
 	return buf
 }
 
-// putBuffer returns a buffer to the pool after clearing it.
+// putBuffer returns a buffer to the pool after clearing it
 func putBuffer(buf *[]byte) {
 	if buf == nil {
 		return
@@ -45,13 +44,6 @@ func putBuffer(buf *[]byte) {
 
 // formatFloat64ID formats a float64 ID as a string, removing trailing zeroes while
 // preserving ".0" for whole numbers.
-//
-// This function supports fractional JSON-RPC IDs, which is a deviation from the
-// JSON-RPC 2.0 specification. The spec states that ID numbers "SHOULD NOT contain
-// fractional parts" (Section 5), but this library allows them for flexibility
-// and compatibility.
-//
-// Reference: https://www.jsonrpc.org/specification#request_object
 func formatFloat64ID(id float64) string {
 	str := strconv.FormatFloat(id, 'f', -1, 64)
 
@@ -72,14 +64,11 @@ func formatFloat64ID(id float64) string {
 
 // RandomJSONRPCID returns a randomly generated value appropriate for a JSON-RPC ID field.
 // Returns an int64 in the range [0, 2147483647] (int32 range) for compatibility.
-// Uses math/rand/v2 which is automatically seeded and provides good randomness.
 func RandomJSONRPCID() int64 {
 	return int64(rand.IntN(2147483647)) // math.MaxInt32
 }
 
-// readAll reads all data from the given reader and returns it as a byte slice.
-// Uses buffer pooling to reduce GC pressure in high-throughput scenarios.
-// The returned byte slice is a copy to avoid retaining the pooled buffer.
+// readAll reads all data from the given reader and returns it as a byte slice copy.
 func readAll(reader io.Reader, chunkSize int64, expectedSize int) ([]byte, error) {
 	if reader == nil {
 		return nil, errors.New("cannot read from nil reader")
