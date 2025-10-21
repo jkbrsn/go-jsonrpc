@@ -8,15 +8,20 @@ linters:
   # standard includes the 5 linters: errcheck, govet, ineffassign, staticcheck, and unused
   default: standard
   enable:
-    - revive
+    - copyloopvar
     - misspell
+    - revive
   settings:
+    copyloopvar:
+      check-alias: true
     errcheck:
       # See https://golangci-lint.run/usage/linters/#errcheck for more information.
       exclude-functions:
         - fmt.Fprint
         - fmt.Fprintln
         - fmt.Fprintf
+    misspell:
+      locale: US
     revive:
       # See https://golangci-lint.run/usage/linters/#revive for more information.
       max-open-files: 2048
@@ -63,8 +68,6 @@ linters:
             - "^fmt.Print"
             - "^fmt.Printf"
             - "^fmt.Println"
-    misspell:
-      locale: US
 
 issues:
   max-issues-per-linter: 0
