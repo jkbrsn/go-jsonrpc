@@ -891,12 +891,10 @@ func TestResponse_Concurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 200 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				idStr := resp.IDString()
 				assert.Equal(t, "12345", idStr)
-			}()
+			})
 		}
 		wg.Wait()
 	})
@@ -906,12 +904,10 @@ func TestResponse_Concurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 200 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				isEmpty := resp.IsEmpty()
 				assert.True(t, isEmpty)
-			}()
+			})
 		}
 		wg.Wait()
 	})
@@ -922,12 +918,10 @@ func TestResponse_Concurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 200 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				equal := resp1.Equals(resp2)
 				assert.True(t, equal)
-			}()
+			})
 		}
 		wg.Wait()
 	})
@@ -1026,13 +1020,11 @@ func TestResponse_Immutability(t *testing.T) {
 
 	// Concurrent reads should see consistent state
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			assert.Equal(t, originalID, resp.IDOrNil())
 			assert.Equal(t, originalResult, string(resp.RawResult()))
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1048,12 +1040,10 @@ func TestResponse_LazyUnmarshalOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	results := make([]any, 100)
 
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			results[idx] = resp.IDOrNil()
-		}(i)
+	for i := range 100 {
+		wg.Go(func() {
+			results[i] = resp.IDOrNil()
+		})
 	}
 	wg.Wait()
 
@@ -1465,26 +1455,22 @@ func TestResponse_PeekStringByPath(t *testing.T) {
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(3)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				val, err := resp.PeekStringByPath("blockNumber")
 				assert.NoError(t, err)
 				assert.Equal(t, "0x1234", val)
-			}()
-			go func() {
-				defer wg.Done()
+			})
+			wg.Go(func() {
 				val, err := resp.PeekStringByPath("hash")
 				assert.NoError(t, err)
 				assert.Equal(t, "0xabcdef", val)
-			}()
-			go func() {
-				defer wg.Done()
+			})
+			wg.Go(func() {
 				val, err := resp.PeekStringByPath("timestamp")
 				assert.NoError(t, err)
 				assert.Equal(t, "0x999", val)
-			}()
+			})
 		}
 		wg.Wait()
 	})
@@ -1627,20 +1613,17 @@ func TestResponse_PeekBytesByPath(t *testing.T) {
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
-			wg.Add(2)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				bytes, err := resp.PeekBytesByPath("obj1")
 				assert.NoError(t, err)
 				assert.Contains(t, string(bytes), "value1")
-			}()
-			go func() {
-				defer wg.Done()
+			})
+			wg.Go(func() {
 				bytes, err := resp.PeekBytesByPath("obj2")
 				assert.NoError(t, err)
 				assert.Contains(t, string(bytes), "value2")
-			}()
+			})
 		}
 		wg.Wait()
 	})
@@ -1864,14 +1847,12 @@ func TestResponse_Clone(t *testing.T) {
 		var wg sync.WaitGroup
 		clones := make([]*Response, 100)
 
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func(idx int) {
-				defer wg.Done()
+		for i := range 100 {
+			wg.Go(func() {
 				clone, err := original.Clone()
 				assert.NoError(t, err)
-				clones[idx] = clone
-			}(i)
+				clones[i] = clone
+			})
 		}
 		wg.Wait()
 
