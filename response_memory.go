@@ -3,6 +3,8 @@ package jsonrpc
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
 
 	"github.com/bytedance/sonic/ast"
 )
@@ -67,6 +69,39 @@ func (r *Response) Clone() (*Response, error) {
 	if len(r.result) > 0 {
 		clone.result = make(json.RawMessage, len(r.result))
 		copy(clone.result, r.result)
+	}
+
+	return clone, nil
+}
+
+// WithID returns a cloned response with the supplied ID while leaving the original untouched.
+// The clone keeps cached payload slices so callers avoid repeated marshaling work.
+func (r *Response) WithID(newID any) (*Response, error) {
+	if r == nil {
+		return nil, errors.New("cannot update id on nil response")
+	}
+
+	clone, err := r.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("failed to clone response: %w", err)
+	}
+
+	var rawID json.RawMessage
+	if newID != nil {
+		rawBytes, err := getSonicAPI().Marshal(newID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal id: %w", err)
+		}
+		rawID = rawBytes
+	}
+
+	clone.id = newID
+	clone.rawID = rawID
+	clone.idOnce = sync.Once{}
+	clone.errOnce = sync.Once{}
+
+	if err := clone.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid response after id update: %w", err)
 	}
 
 	return clone, nil

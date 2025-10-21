@@ -1882,6 +1882,61 @@ func TestResponse_Clone(t *testing.T) {
 	})
 }
 
+func TestResponse_WithID(t *testing.T) {
+	t.Run("replaces id and preserves original", func(t *testing.T) {
+		data := []byte(`{"jsonrpc":"2.0","id":"orig","result":"payload"}`)
+		original, err := DecodeResponse(data)
+		require.NoError(t, err)
+
+		updated, err := original.WithID(int64(99))
+		require.NoError(t, err)
+
+		// Original remains untouched
+		assert.Equal(t, "orig", original.IDString())
+
+		// Updated clone reflects new ID and marshals accordingly
+		assert.Equal(t, int64(99), updated.IDOrNil())
+		updatedJSON, err := updated.MarshalJSON()
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"jsonrpc":"2.0","id":99,"result":"payload"}`, string(updatedJSON))
+
+		originalJSON, err := original.MarshalJSON()
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"jsonrpc":"2.0","id":"orig","result":"payload"}`, string(originalJSON))
+	})
+
+	t.Run("nil id marshals to null", func(t *testing.T) {
+		resp, err := NewResponse("initial", map[string]any{"key": "value"})
+		require.NoError(t, err)
+
+		updated, err := resp.WithID(nil)
+		require.NoError(t, err)
+		assert.Nil(t, updated.IDOrNil())
+
+		bytes, err := updated.MarshalJSON()
+		require.NoError(t, err)
+		assert.Contains(t, string(bytes), `"id":null`)
+	})
+
+	t.Run("invalid id returns error", func(t *testing.T) {
+		resp, err := NewResponse(1, "ok")
+		require.NoError(t, err)
+
+		updated, err := resp.WithID(struct{}{})
+		require.Error(t, err)
+		assert.Nil(t, updated)
+		assert.Contains(t, err.Error(), "invalid response after id update")
+	})
+
+	t.Run("nil receiver returns error", func(t *testing.T) {
+		var resp *Response
+		updated, err := resp.WithID("new")
+		require.Error(t, err)
+		assert.Nil(t, updated)
+		assert.Contains(t, err.Error(), "cannot update id on nil response")
+	})
+}
+
 func TestResponse_Size(t *testing.T) {
 	t.Run("Size of response with string result", func(t *testing.T) {
 		resp, err := NewResponse("test-id", "result-value")
